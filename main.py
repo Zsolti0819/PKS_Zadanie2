@@ -4,7 +4,7 @@ import os
 INIT = 0
 ACK = 1
 DAT = 2
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 
 def create_header(sequence_number, fragment_count, fragment_size, packet_type):
@@ -99,16 +99,16 @@ def server():
             print("[ ] Informacna sprava bola prijata od klienta\n")
             parsed_data = decode_data(data)
             if DEBUG_MODE:
-                print("Prijata sprava: %s" % parsed_data)
+                print(parsed_data)
         except socket.error as e:
             quit("[x] Informacna sprava NEBOLA prijata od klienta\n" + str(e))
 
+        type_of_message = str(parsed_data['data'], 'utf-8')
+        fragment_count = parsed_data['fragment_count']
+        crc = parsed_data['crc']
+
         # sending ACK for the informational message
         if parsed_data['packet_type'] == INIT:
-            type_of_message = str(parsed_data['data'], 'utf-8')
-            fragment_count = parsed_data['fragment_count']
-            crc = parsed_data['crc']
-
 
             ack_packet = create_header(parsed_data['sequence_number'] + 1, 0, 0, ACK)
             ack_packet_and_data = ack_packet + parsed_data['data']
@@ -119,6 +119,35 @@ def server():
                 print("[√] ACK bol odoslany pre informacnu spravu klientovi\n")
             except socket.error as e:
                 quit("[x] ACK NEBOL odoslany pre informacnu spravu klientovi\n" + str(e))
+
+            buffer = 0
+            while buffer < fragment_count:
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    parsed_data = decode_data(data)
+                    print("[ ] Packet c. %d | %lu byteov bol prijaty\n" % ((buffer + 1), parsed_data['fragment_size']))
+                    if DEBUG_MODE:
+                        print(parsed_data)
+                except socket.error as e:
+                    quit("[x] Packet c. %d byteov NEBOL prijaty.\n" % (buffer + 1) + str(e))
+
+                if parsed_data['crc'] != crc16(data[2:]):
+                    buffer -= 1
+                    print("[x] >>> CHYBA PRI CRC KONTROLE <<<\n")
+                    print("-------------------------------------------------------------\n")
+                    try:
+                        sock.sendto(ack_message, (addr[0], addr[1]))
+                        print("[√] ACK pre Packet c. %d bol odoslany !!! CHYBA PRI CRC !!! \n" % (buffer + 1))
+                    except socket.error as e:
+                        quit("[x] ACK pre Packet c. %d NEBOL odoslany !!! CHYBA PRI CRC !!! \n" % (buffer + 1) + str(e))
+
+                elif parsed_data['crc'] == crc16(data[2:]):
+                    try:
+                        sock.sendto(ack_message, (addr[0], addr[1]))
+                        print("[√] ACK pre Packet c. %d bol odoslany\n" % (buffer + 1))
+                        buffer += 1
+                    except socket.error as e:
+                        quit("[x] ACK pre Packet c. %d NEBOL odoslany\n" % (buffer + 1) + str(e))
 
 
 def client():
@@ -212,14 +241,22 @@ def client():
                 crc = crc16(header_and_fragment_data)
                 message_to_send = crc.to_bytes(2, 'big') + header_and_fragment_data
 
-                # sending the message
+                # sending the packet
                 try:
                     sock.sendto(message_to_send, (ip, int(port)))
                     print("[ ] Packet c. %d | %d byteov bol odoslany\n" % ((buffer + 1), int(data_length)))
-                    buffer += 1
-
                 except socket.error as e:
                     quit("[x] Packet c. %d | %d byteov nebol odoslany\n" % ((buffer + 1), int(data_length)) + str(e))
+
+                # waiting for the ACK
+                try:
+                    init_ack, addr = sock.recvfrom(1024)
+                    print("[√] ACK pre Packet c. %d bol prijaty\n" % (buffer + 1))
+                    buffer += 1
+                except socket.error as e:
+                    quit("[x] ACK pre Packet c. %d NEBOL prijaty\n" % (buffer + 1) + str(e))
+
+
 
         else:
             quit("Chyba pri overeni\n")
