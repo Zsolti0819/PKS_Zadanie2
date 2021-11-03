@@ -1,5 +1,6 @@
 import os
 import socket
+import heapq
 
 INIT = 0
 ACK = 1
@@ -16,9 +17,40 @@ def create_header(sequence_number, fragment_count, fragment_size, packet_type):
     return sn + fc + fs + pt
 
 
+def crc16(data: bytes):
+    '''
+    CRC-16-CCITT Algorithm
+    '''
+    poly = 0x8408
+    data = bytearray(data)
+    crc = 0xFFFF
+    for b in data:
+        cur_byte = 0xFF & b
+        for _ in range(0, 8):
+            if (crc & 0x0001) ^ (cur_byte & 0x0001):
+                crc = (crc >> 1) ^ poly
+            else:
+                crc >>= 1
+            cur_byte >>= 1
+    crc = (~crc & 0xFFFF)
+    crc = (crc << 8) | ((crc >> 8) & 0xFF)
+
+    return crc & 0xFFFF
+
+
+def decode_data(data):
+    parsed_data = {'crc': int.from_bytes(data[0:2], 'big'),
+                   'sequence_number': int.from_bytes(data[2:5], 'big'),
+                   'fragment_count': int.from_bytes(data[5:8], 'big'),
+                   'fragment_size': int.from_bytes(data[8:10], 'big'),
+                   'packet_type': int.from_bytes(data[10:11], 'big'),
+                   'data': data[11:]}
+    return parsed_data
+
+
 def set_up_fragment_size():
     fragment_size = input("Zadajte velkost fragmentov:\n")
-    while int(fragment_size) < 1 or int(fragment_size) > 1456:
+    while int(fragment_size) < 1 or int(fragment_size) > 1013:
         fragment_size = input("[!] Zadali ste neplatnu velkost. "
                               "Zadajte velkost fragmentov este raz:\n")
     return fragment_size
@@ -52,43 +84,14 @@ def create_directory():
     except OSError as e:
         quit("Nie je mozne vytvorit priecinok\n" + str(e))
     print("Subory budu ulozene v adresary %s\n" % path)
-
-
-def decode_data(data):
-    parsed_data = {'crc': int.from_bytes(data[0:2], 'big'),
-                   'sequence_number': int.from_bytes(data[2:5], 'big'),
-                   'fragment_count': int.from_bytes(data[5:8], 'big'),
-                   'fragment_size': int.from_bytes(data[8:10], 'big'),
-                   'packet_type': int.from_bytes(data[10:11], 'big'),
-                   'data': data[11:]}
-    return parsed_data
-
-
-def crc16(data: bytes):
-    '''
-    CRC-16-CCITT Algorithm
-    '''
-    poly = 0x8408
-    data = bytearray(data)
-    crc = 0xFFFF
-    for b in data:
-        cur_byte = 0xFF & b
-        for _ in range(0, 8):
-            if (crc & 0x0001) ^ (cur_byte & 0x0001):
-                crc = (crc >> 1) ^ poly
-            else:
-                crc >>= 1
-            cur_byte >>= 1
-    crc = (~crc & 0xFFFF)
-    crc = (crc << 8) | ((crc >> 8) & 0xFF)
-
-    return crc & 0xFFFF
+    return path
 
 
 def set_up_server():
     print(">>> SERVER <<<\n")
     server_ip = input("[1] Zadajte IP adresu servera:\n")
     server_port = input("[2] Zadajte port servera:\n")
+    path = create_directory()
 
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -96,25 +99,26 @@ def set_up_server():
     # bind IP address
     sock.bind((server_ip, int(server_port)))
 
-    create_directory()
-
     while True:
-        buffer = server(server_ip, server_port, sock)
+        buffer = server(server_ip, server_port, sock, path)
         if buffer == 0:
             sock.close()
             return
 
 
-def server(server_ip, server_port, sock):
+def server(server_ip, server_port, sock, path):
     decoded_data = ""
     addr = ""
+    received_message = []
+    heapq.heapify(received_message)
+    final_message = ""
 
     choice2 = input("Server ma nastavenu IP adresu %s a port %s.\n"
                     "Zvolte z moznosti:\n"
-                    "[1] Prijat pakety\n"
-                    "[2] Odhlasit sa\n" % (server_ip, server_port))
+                    "[0] Odhlasit sa\n"
+                    "[1] Prijat pakety\n" % (server_ip, server_port))
 
-    if int(choice2) == 2:
+    if int(choice2) == 0:
         return 0
 
     print("[√] >>> Server caka na prijimanie udajov <<<\n")
@@ -156,8 +160,17 @@ def server(server_ip, server_port, sock):
 
                 # crc is correct
                 if decoded_data['crc'] == crc16(data[2:]):
+
                     print("[ ] Packet c. %d | %lu byteov bol prijaty" % (
                         decoded_data['sequence_number'], decoded_data['fragment_size']))
+
+                    heapq.heappush(received_message, (decoded_data['sequence_number'], decoded_data['data']))
+
+                    if type_of_message == "<text>":
+                        final_message += heapq.heappop(received_message)[1].decode('utf-8')
+                    # else:
+                    #     with open(os.path.join(path, type_of_message), 'wb') as fp:
+                    #         fp.write(heapq.heappop(received_message)[1])
 
                     if DEBUG_MODE:
                         print("received:", decoded_data)
@@ -179,7 +192,6 @@ def server(server_ip, server_port, sock):
 
                 # crc is NOT correct
                 elif decoded_data['crc'] != crc16(data[2:]):
-                    successfully_received_fragments -= 1
                     print("[!] Packet c. %d | %lu byteov bol prijaty >>> CHYBA PRI CRC KONTROLE <<<" % (
                         (decoded_data['sequence_number']), decoded_data['fragment_size']))
 
@@ -196,22 +208,27 @@ def server(server_ip, server_port, sock):
                     except socket.error as e:
                         quit(
                             "[x] RERQ pre Packet c. %d NEBOL odoslany\n" % (
-                                    successfully_received_fragments + 1) + str(e))
+                                decoded_data['sequence_number']) + str(e))
 
         except socket.error as e:
             quit("[x] Packet c. %d byteov NEBOL prijaty.\n" % (decoded_data['sequence_number']) + str(e))
 
-        if type_of_message == "<text>":
-            print(str(decoded_data['data'], 'utf-8'))
+    if type_of_message == "<text>":
+        print("\n[i] Prijata sprava od %s: %s\n" % (addr[0], final_message))
 
-        else:
-            print("FILE, TO DO")
+    else:
+        print("\n[i] Prijaty subor od %s: %s bol ulozeny pod adresarom %s\n" % (addr[0], type_of_message, path))
+        with open(os.path.join(path, type_of_message), 'wb') as file:
+            while received_message:
+                file.write(heapq.heappop(received_message)[1])
 
 
 def set_up_client():
     print(">>> KLIENT <<<\n")
     server_ip = input("[1] Zadajte IP adresu servera:\n")
     server_port = input("[2] Zadajte port servera:\n")
+
+    # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
     while True:
@@ -229,6 +246,7 @@ def client(server_ip, server_port, sock):
     defected = False
     packet_type = 0
     response_to_fragment = ""
+    byte_array = bytearray()
 
     action = input("Zvolte z moznosti:\n"
                    "[0] - Odhlasit sa\n"
@@ -254,13 +272,24 @@ def client(server_ip, server_port, sock):
 
     elif int(action) == 3 or int(action) == 4:
         fragment_size = set_up_fragment_size()
-        message = input("Zadajte meno suboru:\n")
-        file_size = len(message)
+        path_and_file_name = input("Zadajte meno suboru:\n")
+        file_name = os.path.basename(path_and_file_name)
+        file_size = os.path.getsize(path_and_file_name)
         # print(file_size)
-        file_name = "<text>"
-        if int(action) == 1:
+
+        with open(path_and_file_name, "rb") as file:
+            while True:
+                byte = file.read(1)
+                if not byte:
+                    break
+                byte_array += byte
+        file.close()
+
+        # print(byte_array)
+
+        if int(action) == 3:
             defected = False
-        elif int(action) == 2:
+        elif int(action) == 4:
             defected = True
         packet_type = DAT
 
@@ -299,14 +328,21 @@ def client(server_ip, server_port, sock):
             print("sent:", sent_packet)
             print("received:", received_packet)
 
-        buffer = 0
-        while buffer < int(fragment_count):
+        successfully_sent_fragments = 0
+        while successfully_sent_fragments < int(fragment_count):
 
-            data_length = calculate_data_length(buffer, file_size, fragment_size)
+            data_length = calculate_data_length(successfully_sent_fragments, file_size, fragment_size)
 
-            header = create_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
-            fragment_data = bytes(
-                message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)], 'utf-8')
+            header = create_header(successfully_sent_fragments + 1, int(fragment_count), int(data_length), packet_type)
+
+            if file_name == "<text>":
+                fragment_data = bytes(
+                    message[successfully_sent_fragments * int(fragment_size):(successfully_sent_fragments * int(fragment_size)) + int(fragment_size)], 'utf-8')
+
+            else:
+                fragment_data = bytes(
+                    byte_array[successfully_sent_fragments * int(fragment_size):(successfully_sent_fragments * int(fragment_size)) + int(fragment_size)])
+
             header_and_fragment_data = header + fragment_data
 
             if defected:
@@ -346,7 +382,7 @@ def client(server_ip, server_port, sock):
                     print("sent:", sent_decoded_fragment)
                     print("received:", decoded_response_to_fragment)
 
-                buffer += 1
+                successfully_sent_fragments += 1
 
             # response to the sent fragment was RERQ
             elif decoded_response_to_fragment['sequence_number'] == sent_decoded_fragment['sequence_number'] \
@@ -359,8 +395,15 @@ def client(server_ip, server_port, sock):
                     print("sent:", sent_decoded_fragment)
                     print("received:", decoded_response_to_fragment)
 
+            if successfully_sent_fragments == int(fragment_count):
+                if file_name == "<text>":
+                    print("\n[√] Sprava '%s' bola uspesne odoslana\n" % message)
+
+                else:
+                    print("\n[√] Subor '%s' bol uspesne odoslany\n" % file_name)
+
     else:
-        quit("Chyba pri overeni")
+        quit("Chyba pri overeni\n")
 
     return 1
 
