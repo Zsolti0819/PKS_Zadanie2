@@ -6,7 +6,9 @@ INIT = 0
 ACK = 1
 DAT = 2
 RERQ = 3
-SHOW_EACH_FRAGMENT_INFO = True
+
+CUSTOM_HEADER_SIZE = 11
+SHOW_EACH_FRAGMENT_INFO = False
 
 
 def create_header(sequence_number, fragment_count, fragment_size, packet_type):
@@ -50,7 +52,7 @@ def decode_data(data):
 
 def set_up_fragment_size():
     fragment_size = input("Zadajte velkost fragmentov:\n")
-    while int(fragment_size) < 1 or int(fragment_size) > 1013:
+    while int(fragment_size) < 1 or int(fragment_size) > 32767 - 11:
         fragment_size = input("[!] Zadali ste neplatnu velkost. "
                               "Zadajte velkost fragmentov este raz:\n")
     return fragment_size
@@ -125,7 +127,7 @@ def server(server_ip, server_port, sock, path):
 
     # receiving the initial message
     try:
-        data, addr = sock.recvfrom(2048)
+        data, addr = sock.recvfrom(32767)
         decoded_data = decode_data(data)
     except socket.error as e:
         quit("[x] Inicializacna sprava NEBOLA prijata od klienta\n" + str(e))
@@ -157,7 +159,7 @@ def server(server_ip, server_port, sock, path):
     successfully_received_fragments = 0
     while successfully_received_fragments < fragment_count:
         try:
-            data, addr = sock.recvfrom(2048)
+            data, addr = sock.recvfrom(32767)
             decoded_data = decode_data(data)
             if decoded_data['packet_type'] == DAT:
 
@@ -318,7 +320,7 @@ def client(server_ip, server_port, sock):
 
     # waiting for the ACK
     try:
-        response_to_fragment, addr = sock.recvfrom(2048)
+        response_to_fragment, addr = sock.recvfrom(32767)
     except socket.error as e:
         quit("[x] ACK nebol prijaty pre inicializacnu spravu od servera\n" + str(e))
 
@@ -376,7 +378,7 @@ def client(server_ip, server_port, sock):
 
             # waiting for the response (ACK or RERQ)
             try:
-                response_to_fragment, addr = sock.recvfrom(1024)
+                response_to_fragment, addr = sock.recvfrom(32767)
             except socket.error as e:
                 quit("[x] ACK pre Packet c. %d NEBOL prijaty\n" % (sent_decoded_fragment['sequence_number']) + str(e))
 
