@@ -11,6 +11,8 @@ CUSTOM_HEADER_SIZE = 11
 SHOW_EACH_FRAGMENT_INFO = False
 
 
+# Checkpoint
+
 def create_header(sequence_number, fragment_count, fragment_size, packet_type):
     sn = sequence_number.to_bytes(3, 'big')
     fc = fragment_count.to_bytes(3, 'big')
