@@ -4,14 +4,13 @@ import heapq
 
 INIT = 0
 ACK = 1
-DAT = 2
-RERQ = 3
+NACK = 2
+DAT = 3
+
 
 CUSTOM_HEADER_SIZE = 11
-SHOW_EACH_FRAGMENT_INFO = False
+SHOW_EACH_FRAGMENT_INFO = True
 
-
-# Checkpoint
 
 def create_header(sequence_number, fragment_count, fragment_size, packet_type):
     sn = sequence_number.to_bytes(3, 'big')
@@ -43,12 +42,12 @@ def crc16(data: bytes):
 
 
 def decode_data(data):
-    parsed_data = {'crc': int.from_bytes(data[0:2], 'big'),
-                   'sequence_number': int.from_bytes(data[2:5], 'big'),
-                   'fragment_count': int.from_bytes(data[5:8], 'big'),
-                   'fragment_size': int.from_bytes(data[8:10], 'big'),
-                   'packet_type': int.from_bytes(data[10:11], 'big'),
-                   'data': data[11:]}
+    parsed_data = {'sequence_number': int.from_bytes(data[0:3], 'big'),
+                   'fragment_count': int.from_bytes(data[3:6], 'big'),
+                   'fragment_size': int.from_bytes(data[6:8], 'big'),
+                   'packet_type': int.from_bytes(data[8:9], 'big'),
+                   'crc': int.from_bytes(data[9:11], 'big'),
+                   'data': data[11:],}
     return parsed_data
 
 
@@ -145,9 +144,9 @@ def server(server_ip, server_port, sock, path):
 
         ack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
                                    decoded_data['fragment_size'], ACK)
-        ack_header_and_data = ack_header + decoded_data['data']
-        crc = crc16(ack_header_and_data)
-        ack_message = crc.to_bytes(2, 'big') + ack_header_and_data
+        temp = ack_header + decoded_data['data']
+        crc = crc16(temp)
+        ack_message = ack_header + crc.to_bytes(2, 'big') + decoded_data['data']
         sent_decoded_ack = decode_data(ack_message)
 
         try:
@@ -162,11 +161,13 @@ def server(server_ip, server_port, sock, path):
     while successfully_received_fragments < fragment_count:
         try:
             data, addr = sock.recvfrom(32767)
+
             decoded_data = decode_data(data)
+            data_without_crc = data[:9] + data[11:]
             if decoded_data['packet_type'] == DAT:
 
                 # crc is correct
-                if decoded_data['crc'] == crc16(data[2:]):
+                if decoded_data['crc'] == crc16(data_without_crc):
 
                     if SHOW_EACH_FRAGMENT_INFO:
                         print("[ ] Packet c. %d | %lu byteov bol prijaty" % (
@@ -181,44 +182,45 @@ def server(server_ip, server_port, sock, path):
                     # sending ACK for the fragment
                     fr_ack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
                                                   decoded_data['fragment_size'], ACK)
-                    fr_ack_header_and_data = fr_ack_header + decoded_data['data']
-                    crc = crc16(fr_ack_header_and_data)
-                    fr_ack_message = crc.to_bytes(2, 'big') + fr_ack_header_and_data
+                    temp = fr_ack_header + decoded_data['data']
+                    crc = crc16(temp)
+                    fr_ack_message = fr_ack_header + crc.to_bytes(2, 'big') + decoded_data['data']
                     sent_decoded_fr_ack_message = decode_data(fr_ack_message)
 
                     try:
                         sock.sendto(fr_ack_message, (addr[0], addr[1]))
                         if SHOW_EACH_FRAGMENT_INFO:
-                            print("[√] ACK pre Packet c. %d bol odoslany" % (decoded_data['sequence_number']))
-                            print(decoded_data, "\n")
+                            print("[√] ACK pre Packet c. %d bol odoslany" % (sent_decoded_fr_ack_message['sequence_number']))
+                            print(sent_decoded_fr_ack_message, "\n")
                         successfully_received_fragments += 1
                     except socket.error as e:
-                        quit("[x] ACK pre Packet c. %d NEBOL odoslany\n" % (decoded_data['sequence_number']) + str(
+                        quit("[x] ACK pre Packet c. %d NEBOL odoslany\n" % (sent_decoded_fr_ack_message['sequence_number']) + str(
                             e))
 
                 # crc is NOT correct
-                elif decoded_data['crc'] != crc16(data[2:]):
+                elif decoded_data['crc'] != crc16(data_without_crc):
                     if SHOW_EACH_FRAGMENT_INFO:
                         print("[!] Packet c. %d | %lu byteov bol prijaty >>> CHYBA PRI CRC KONTROLE <<<" % (
                             (decoded_data['sequence_number']), decoded_data['fragment_size']))
                         print(decoded_data, "\n")
 
-                    # sending RERQ for the fragment
-                    fr_rerq_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
-                                                   decoded_data['fragment_size'], RERQ)
-                    fr_rerq_header_and_data = fr_rerq_header + decoded_data['data']
-                    crc = crc16(fr_rerq_header_and_data)
-                    fr_rerq_message = crc.to_bytes(2, 'big') + fr_rerq_header_and_data
+                    # sending NACK for the fragment
+                    fr_nack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                                                   decoded_data['fragment_size'], NACK)
+                    temp = fr_nack_header + decoded_data['data']
+                    crc = crc16(temp)
+                    fr_nack_message = fr_nack_header + crc.to_bytes(2, 'big') + decoded_data['data']
+                    sent_decoded_fr_nack_message = decode_data(fr_nack_message)
                     try:
-                        sock.sendto(fr_rerq_message, (addr[0], addr[1]))
+                        sock.sendto(fr_nack_message, (addr[0], addr[1]))
                         if SHOW_EACH_FRAGMENT_INFO:
-                            print("[√] RERQ pre Packet c. %d bol odoslany" % (
-                                decoded_data['sequence_number']))
-                            print(decoded_data, "\n")
+                            print("[√] NACK pre Packet c. %d bol odoslany" % (
+                                sent_decoded_fr_nack_message['sequence_number']))
+                            print(sent_decoded_fr_nack_message, "\n")
                     except socket.error as e:
                         quit(
-                            "[x] RERQ pre Packet c. %d NEBOL odoslany\n" % (
-                                decoded_data['sequence_number']) + str(e))
+                            "[x] NACK pre Packet c. %d NEBOL odoslany\n" % (
+                                fr_nack_message['sequence_number']) + str(e))
 
         except socket.error as e:
             quit("[x] Packet c. %d byteov NEBOL prijaty.\n" % (decoded_data['sequence_number']) + str(e))
@@ -305,9 +307,9 @@ def client(server_ip, server_port, sock):
 
     fragment_count = calculate_fragment_count(file_size, fragment_size)
     header = create_header(file_size, int(fragment_count), int(fragment_size), INIT)
-    packet_and_data = header + file_name.encode(encoding='utf-8')
-    crc = crc16(packet_and_data)
-    fragment_to_send = crc.to_bytes(2, 'big') + packet_and_data
+    temp = header + file_name.encode(encoding='utf-8')
+    crc = crc16(temp)
+    fragment_to_send = header + crc.to_bytes(2, 'big') + file_name.encode(encoding='utf-8')
 
     sent_packet = decode_data(fragment_to_send)
 
@@ -356,15 +358,15 @@ def client(server_ip, server_port, sock):
                     byte_array[successfully_sent_fragments * int(fragment_size):(successfully_sent_fragments * int(
                         fragment_size)) + int(fragment_size)])
 
-            header_and_fragment_data = header + fragment_data
+            temp = header + fragment_data
 
             if defected:
-                crc = crc16(header_and_fragment_data) + 1
+                crc = crc16(temp) + 1
                 defected = False
             else:
-                crc = crc16(header_and_fragment_data)
+                crc = crc16(temp)
 
-            fragment_to_send = crc.to_bytes(2, 'big') + header_and_fragment_data
+            fragment_to_send = header + crc.to_bytes(2, 'big') + fragment_data
             sent_decoded_fragment = decode_data(fragment_to_send)
 
             # sending the packet
@@ -378,7 +380,7 @@ def client(server_ip, server_port, sock):
                 quit("[x] Packet c. %d | %d byteov nebol odoslany\n" % (
                     sent_decoded_fragment['sequence_number'], sent_decoded_fragment['fragment_size']) + str(e))
 
-            # waiting for the response (ACK or RERQ)
+            # waiting for the response (ACK or NACK)
             try:
                 response_to_fragment, addr = sock.recvfrom(32767)
             except socket.error as e:
@@ -398,14 +400,14 @@ def client(server_ip, server_port, sock):
 
                 successfully_sent_fragments += 1
 
-            # response to the sent fragment was RERQ
+            # response to the sent fragment was NACK
             elif decoded_response_to_fragment['sequence_number'] == sent_decoded_fragment['sequence_number'] \
                     and decoded_response_to_fragment['fragment_count'] == sent_decoded_fragment['fragment_count'] \
                     and decoded_response_to_fragment['fragment_size'] == sent_decoded_fragment['fragment_size'] \
                     and decoded_response_to_fragment['data'] == sent_decoded_fragment['data'] \
-                    and decoded_response_to_fragment['packet_type'] == RERQ:
+                    and decoded_response_to_fragment['packet_type'] == NACK:
                 if SHOW_EACH_FRAGMENT_INFO:
-                    print("[!] RERQ pre Packet c. %d bol prijaty" % (decoded_response_to_fragment['sequence_number']))
+                    print("[!] NACK pre Packet c. %d bol prijaty" % (decoded_response_to_fragment['sequence_number']))
                     print(decoded_response_to_fragment, "\n")
 
             if successfully_sent_fragments == int(fragment_count):
