@@ -12,7 +12,7 @@ CUSTOM_HEADER_SIZE = 11
 SHOW_EACH_FRAGMENT_INFO = True
 
 
-def create_header(sequence_number, fragment_count, fragment_size, packet_type):
+def create_custom_header(sequence_number, fragment_count, fragment_size, packet_type):
     sn = sequence_number.to_bytes(3, 'big')
     fc = fragment_count.to_bytes(3, 'big')
     fs = fragment_size.to_bytes(2, 'big')
@@ -142,8 +142,8 @@ def server(server_ip, server_port, sock, path):
             print("[ ] Inicializacna sprava bola prijata od klienta")
             print(decoded_data, "\n")
 
-        ack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
-                                   decoded_data['fragment_size'], ACK)
+        ack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                                          decoded_data['fragment_size'], ACK)
         temp = ack_header + decoded_data['data']
         crc = crc16(temp)
         ack_message = ack_header + crc.to_bytes(2, 'big') + decoded_data['data']
@@ -180,11 +180,12 @@ def server(server_ip, server_port, sock, path):
                         final_message += heapq.heappop(received_message)[1].decode('utf-8')
 
                     # sending ACK for the fragment
-                    fr_ack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
-                                                  decoded_data['fragment_size'], ACK)
+                    fr_ack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                                                         decoded_data['fragment_size'], ACK)
                     temp = fr_ack_header + decoded_data['data']
-                    crc = crc16(temp)
-                    fr_ack_message = fr_ack_header + crc.to_bytes(2, 'big') + decoded_data['data']
+                    crc = 0
+                    ack_data = 0
+                    fr_ack_message = fr_ack_header + crc.to_bytes(2, 'big') + ack_data.to_bytes(1, 'big')
                     sent_decoded_fr_ack_message = decode_data(fr_ack_message)
 
                     try:
@@ -205,11 +206,12 @@ def server(server_ip, server_port, sock, path):
                         print(decoded_data, "\n")
 
                     # sending NACK for the fragment
-                    fr_nack_header = create_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
-                                                   decoded_data['fragment_size'], NACK)
+                    fr_nack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                                                          decoded_data['fragment_size'], NACK)
                     temp = fr_nack_header + decoded_data['data']
-                    crc = crc16(temp)
-                    fr_nack_message = fr_nack_header + crc.to_bytes(2, 'big') + decoded_data['data']
+                    crc = 0
+                    nack_data = 0
+                    fr_nack_message = fr_nack_header + crc.to_bytes(2, 'big') + nack_data.to_bytes(1, 'big')
                     sent_decoded_fr_nack_message = decode_data(fr_nack_message)
                     try:
                         sock.sendto(fr_nack_message, (addr[0], addr[1]))
@@ -306,7 +308,7 @@ def client(server_ip, server_port, sock):
         packet_type = DAT
 
     fragment_count = calculate_fragment_count(file_size, fragment_size)
-    header = create_header(file_size, int(fragment_count), int(fragment_size), INIT)
+    header = create_custom_header(file_size, int(fragment_count), int(fragment_size), INIT)
     temp = header + file_name.encode(encoding='utf-8')
     crc = crc16(temp)
     fragment_to_send = header + crc.to_bytes(2, 'big') + file_name.encode(encoding='utf-8')
@@ -346,7 +348,7 @@ def client(server_ip, server_port, sock):
 
             data_length = calculate_data_length(successfully_sent_fragments, file_size, fragment_size)
 
-            header = create_header(successfully_sent_fragments + 1, int(fragment_count), int(data_length), packet_type)
+            header = create_custom_header(successfully_sent_fragments + 1, int(fragment_count), int(data_length), packet_type)
 
             if file_name == "<text>":
                 fragment_data = bytes(
@@ -392,7 +394,6 @@ def client(server_ip, server_port, sock):
             if decoded_response_to_fragment['sequence_number'] == sent_decoded_fragment['sequence_number'] \
                     and decoded_response_to_fragment['fragment_count'] == sent_decoded_fragment['fragment_count'] \
                     and decoded_response_to_fragment['fragment_size'] == sent_decoded_fragment['fragment_size'] \
-                    and decoded_response_to_fragment['data'] == sent_decoded_fragment['data'] \
                     and decoded_response_to_fragment['packet_type'] == ACK:
                 if SHOW_EACH_FRAGMENT_INFO:
                     print("[√] ACK pre Packet c. %d bol prijaty" % (decoded_response_to_fragment['sequence_number']))
@@ -404,7 +405,6 @@ def client(server_ip, server_port, sock):
             elif decoded_response_to_fragment['sequence_number'] == sent_decoded_fragment['sequence_number'] \
                     and decoded_response_to_fragment['fragment_count'] == sent_decoded_fragment['fragment_count'] \
                     and decoded_response_to_fragment['fragment_size'] == sent_decoded_fragment['fragment_size'] \
-                    and decoded_response_to_fragment['data'] == sent_decoded_fragment['data'] \
                     and decoded_response_to_fragment['packet_type'] == NACK:
                 if SHOW_EACH_FRAGMENT_INFO:
                     print("[!] NACK pre Packet c. %d bol prijaty" % (decoded_response_to_fragment['sequence_number']))
