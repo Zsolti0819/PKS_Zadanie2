@@ -1,14 +1,14 @@
 import os
 import socket
 import heapq
+import zlib
 
 INIT = 0
 ACK = 1
 NACK = 2
 DAT = 3
 
-
-CUSTOM_HEADER_SIZE = 11
+CUSTOM_HEADER_SIZE = 13
 SHOW_EACH_FRAGMENT_INFO = True
 
 
@@ -20,25 +20,25 @@ def create_custom_header(sequence_number, fragment_count, fragment_size, packet_
     return sn + fc + fs + pt
 
 
-def crc16(data: bytes):
-    """
-    CRC-16-CCITT Algorithm
-    """
-    poly = 0x8408
-    data = bytearray(data)
-    crc = 0xFFFF
-    for b in data:
-        cur_byte = 0xFF & b
-        for _ in range(0, 8):
-            if (crc & 0x0001) ^ (cur_byte & 0x0001):
-                crc = (crc >> 1) ^ poly
-            else:
-                crc >>= 1
-            cur_byte >>= 1
-    crc = (~crc & 0xFFFF)
-    crc = (crc << 8) | ((crc >> 8) & 0xFF)
-
-    return crc & 0xFFFF
+# def crc16(data: bytes):
+#     """
+#     CRC-16-CCITT Algorithm
+#     """
+#     poly = 0x8408
+#     data = bytearray(data)
+#     crc = 0xFFFF
+#     for b in data:
+#         cur_byte = 0xFF & b
+#         for _ in range(0, 8):
+#             if (crc & 0x0001) ^ (cur_byte & 0x0001):
+#                 crc = (crc >> 1) ^ poly
+#             else:
+#                 crc >>= 1
+#             cur_byte >>= 1
+#     crc = (~crc & 0xFFFF)
+#     crc = (crc << 8) | ((crc >> 8) & 0xFF)
+#
+#     return crc & 0xFFFF
 
 
 def decode_data(data):
@@ -46,14 +46,14 @@ def decode_data(data):
                    'fragment_count': int.from_bytes(data[3:6], 'big'),
                    'fragment_size': int.from_bytes(data[6:8], 'big'),
                    'packet_type': int.from_bytes(data[8:9], 'big'),
-                   'crc': int.from_bytes(data[9:11], 'big'),
-                   'data': data[11:],}
+                   'crc': int.from_bytes(data[9:13], 'big'),
+                   'data': data[13:], }
     return parsed_data
 
 
 def set_up_fragment_size():
     fragment_size = input("Zadajte velkost fragmentov:\n")
-    while int(fragment_size) < 1 or int(fragment_size) > 32767 - 11:
+    while int(fragment_size) < 1 or int(fragment_size) > 1432 - CUSTOM_HEADER_SIZE:
         fragment_size = input("[!] Zadali ste neplatnu velkost. "
                               "Zadajte velkost fragmentov este raz:\n")
     return fragment_size
@@ -145,8 +145,8 @@ def server(server_ip, server_port, sock, path):
         ack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
                                           decoded_data['fragment_size'], ACK)
         temp = ack_header + decoded_data['data']
-        crc = crc16(temp)
-        ack_message = ack_header + crc.to_bytes(2, 'big') + decoded_data['data']
+        crc = zlib.crc32(temp)
+        ack_message = ack_header + crc.to_bytes(4, 'big') + decoded_data['data']
         sent_decoded_ack = decode_data(ack_message)
 
         try:
@@ -163,11 +163,11 @@ def server(server_ip, server_port, sock, path):
             data, addr = sock.recvfrom(32767)
 
             decoded_data = decode_data(data)
-            data_without_crc = data[:9] + data[11:]
+            data_without_crc = data[:9] + data[13:]
             if decoded_data['packet_type'] == DAT:
 
                 # crc is correct
-                if decoded_data['crc'] == crc16(data_without_crc):
+                if decoded_data['crc'] == zlib.crc32(data_without_crc):
 
                     if SHOW_EACH_FRAGMENT_INFO:
                         print("[ ] Packet c. %d | %lu byteov bol prijaty" % (
@@ -180,38 +180,42 @@ def server(server_ip, server_port, sock, path):
                         final_message += heapq.heappop(received_message)[1].decode('utf-8')
 
                     # sending ACK for the fragment
-                    fr_ack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                    fr_ack_header = create_custom_header(decoded_data['sequence_number'],
+                                                         decoded_data['fragment_count'],
                                                          decoded_data['fragment_size'], ACK)
                     temp = fr_ack_header + decoded_data['data']
-                    crc = 0
+                    crc = zlib.crc32(temp)
                     ack_data = 0
-                    fr_ack_message = fr_ack_header + crc.to_bytes(2, 'big') + ack_data.to_bytes(1, 'big')
+                    fr_ack_message = fr_ack_header + crc.to_bytes(4, 'big') + ack_data.to_bytes(1, 'big')
                     sent_decoded_fr_ack_message = decode_data(fr_ack_message)
 
                     try:
                         sock.sendto(fr_ack_message, (addr[0], addr[1]))
                         if SHOW_EACH_FRAGMENT_INFO:
-                            print("[√] ACK pre Packet c. %d bol odoslany" % (sent_decoded_fr_ack_message['sequence_number']))
+                            print("[√] ACK pre Packet c. %d bol odoslany" % (
+                            sent_decoded_fr_ack_message['sequence_number']))
                             print(sent_decoded_fr_ack_message, "\n")
                         successfully_received_fragments += 1
                     except socket.error as e:
-                        quit("[x] ACK pre Packet c. %d NEBOL odoslany\n" % (sent_decoded_fr_ack_message['sequence_number']) + str(
+                        quit("[x] ACK pre Packet c. %d NEBOL odoslany\n" % (
+                        sent_decoded_fr_ack_message['sequence_number']) + str(
                             e))
 
                 # crc is NOT correct
-                elif decoded_data['crc'] != crc16(data_without_crc):
+                elif decoded_data['crc'] != zlib.crc32(data_without_crc):
                     if SHOW_EACH_FRAGMENT_INFO:
                         print("[!] Packet c. %d | %lu byteov bol prijaty >>> CHYBA PRI CRC KONTROLE <<<" % (
                             (decoded_data['sequence_number']), decoded_data['fragment_size']))
                         print(decoded_data, "\n")
 
                     # sending NACK for the fragment
-                    fr_nack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
+                    fr_nack_header = create_custom_header(decoded_data['sequence_number'],
+                                                          decoded_data['fragment_count'],
                                                           decoded_data['fragment_size'], NACK)
                     temp = fr_nack_header + decoded_data['data']
-                    crc = 0
+                    crc = zlib.crc32(temp)
                     nack_data = 0
-                    fr_nack_message = fr_nack_header + crc.to_bytes(2, 'big') + nack_data.to_bytes(1, 'big')
+                    fr_nack_message = fr_nack_header + crc.to_bytes(4, 'big') + nack_data.to_bytes(1, 'big')
                     sent_decoded_fr_nack_message = decode_data(fr_nack_message)
                     try:
                         sock.sendto(fr_nack_message, (addr[0], addr[1]))
@@ -310,8 +314,8 @@ def client(server_ip, server_port, sock):
     fragment_count = calculate_fragment_count(file_size, fragment_size)
     header = create_custom_header(file_size, int(fragment_count), int(fragment_size), INIT)
     temp = header + file_name.encode(encoding='utf-8')
-    crc = crc16(temp)
-    fragment_to_send = header + crc.to_bytes(2, 'big') + file_name.encode(encoding='utf-8')
+    crc = zlib.crc32(temp)
+    fragment_to_send = header + crc.to_bytes(4, 'big') + file_name.encode(encoding='utf-8')
 
     sent_packet = decode_data(fragment_to_send)
 
@@ -348,7 +352,8 @@ def client(server_ip, server_port, sock):
 
             data_length = calculate_data_length(successfully_sent_fragments, file_size, fragment_size)
 
-            header = create_custom_header(successfully_sent_fragments + 1, int(fragment_count), int(data_length), packet_type)
+            header = create_custom_header(successfully_sent_fragments + 1, int(fragment_count), int(data_length),
+                                          packet_type)
 
             if file_name == "<text>":
                 fragment_data = bytes(
@@ -360,15 +365,14 @@ def client(server_ip, server_port, sock):
                     byte_array[successfully_sent_fragments * int(fragment_size):(successfully_sent_fragments * int(
                         fragment_size)) + int(fragment_size)])
 
-            temp = header + fragment_data
-
             if defected:
-                crc = crc16(temp) + 1
+                temp = header + fragment_data.swapcase()
                 defected = False
             else:
-                crc = crc16(temp)
+                temp = header + fragment_data
 
-            fragment_to_send = header + crc.to_bytes(2, 'big') + fragment_data
+            crc = zlib.crc32(temp)
+            fragment_to_send = header + crc.to_bytes(4, 'big') + fragment_data
             sent_decoded_fragment = decode_data(fragment_to_send)
 
             # sending the packet
