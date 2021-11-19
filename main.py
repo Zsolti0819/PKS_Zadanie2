@@ -3,17 +3,19 @@ import socket
 import heapq
 import zlib
 
+LARGEST_POSSIBLE_TRANSMISSION_SIZE = 1432
+CUSTOM_HEADER_SIZE = 13
+
+# SWITCHES
+SHOW_EACH_FRAGMENT_INFO = True
+SHOW_ADDITIONAL_FRAGMENT_INFO = False
+
+# PACKET TYPES
 INF = 0
 ACK = 1
 NACK = 2
 DAT = 3
 KPA = 4
-
-
-LARGEST_POSSIBLE_TRANSMISSION_SIZE = 1432
-CUSTOM_HEADER_SIZE = 13
-SHOW_EACH_FRAGMENT_INFO = True
-SHOW_ADDITIONAL_FRAGMENT_INFO = False
 
 
 def create_custom_header(sequence_number, fragment_count, fragment_size, packet_type):
@@ -37,7 +39,8 @@ def decode_data(data):
 def set_up_fragment_size():
     fragment_size = input("Enter the size of the fragments:\n")
     while int(fragment_size) < 1 or int(fragment_size) > LARGEST_POSSIBLE_TRANSMISSION_SIZE - CUSTOM_HEADER_SIZE:
-        fragment_size = input("[!] You have entered an invalid size. The max fragment size is 1419. Please enter the fragment size again:\n")
+        fragment_size = input("[!] You have entered an invalid size. The max fragment size is 1419. Please enter the "
+                              "fragment size again:\n")
     return fragment_size
 
 
@@ -98,9 +101,10 @@ def server(server_ip, server_port, sock, path):
     heapq.heapify(received_message)
     final_message = ""
 
-    choice2 = input("Choose from the options:\n"
+    choice2 = input("Server has IP address set to %s.\n"
+                    "Choose from the options:\n"
                     "[0] Sign out\n"
-                    "[1] Listen on port %s\n" % server_port)
+                    "[1] Listen on port %s\n" % (server_ip, server_port))
 
     if int(choice2) == 0:
         return 0
@@ -126,7 +130,6 @@ def server(server_ip, server_port, sock, path):
 
         ack_header = create_custom_header(decoded_data['sequence_number'], decoded_data['fragment_count'],
                                           decoded_data['fragment_size'], ACK)
-        # temp = ack_header + decoded_data['data']
         crc = 0
         ack_message = ack_header + crc.to_bytes(4, 'big') + decoded_data['data']
         sent_decoded_ack = decode_data(ack_message)
@@ -140,10 +143,13 @@ def server(server_ip, server_port, sock, path):
         except socket.error as e:
             quit("[x] Failed to send ACK to the client for the information message\n" + str(e))
 
-    print("[i] The server expects a %lu byte message from the client, divided into %d packets.\n"
-          "    The message is fragmented by %lu bytes. A total of %lu bytes will be transferred.\n"
-          % (decoded_data['sequence_number'], fragment_count, decoded_data['fragment_size'],
-             (fragment_count * int(CUSTOM_HEADER_SIZE)) + decoded_data['sequence_number']))
+    print("[i] The server expects a %lu byte message from the client, divided into %d packets. The message is "
+          "fragmented by %lu bytes. A total of %lu bytes will be transferred." % (decoded_data['sequence_number'],
+                                                                                  fragment_count, decoded_data[
+                                                                                                'fragment_size'],
+                                                                                  (fragment_count * int(
+                                                                                      CUSTOM_HEADER_SIZE)) +
+                                                                                  decoded_data['sequence_number']))
 
     successfully_received_fragments = 0
     while successfully_received_fragments < fragment_count:
