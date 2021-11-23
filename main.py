@@ -5,13 +5,14 @@ import zlib
 import threading
 
 stop_sending_KPAs = threading.Event()
+stop_receiving_KPAs = threading.Event()
 
 MAX_DATA_SIZE = 1432
 CUSTOM_HEADER_SIZE = 13
 
 # SWITCHES
-SHOW_EACH_FRAGMENT = True
-SHOW_ADDITIONAL_FRAGMENT_INFO = True
+SHOW_EACH_FRAGMENT = False
+SHOW_ADDITIONAL_FRAGMENT_INFO = False
 
 # PACKET TYPES
 INF = 0
@@ -78,7 +79,7 @@ def create_directory():
     return path
 
 
-def keep_alive_client(server_ip, server_port, sock):
+def client_keep_alive(server_ip, server_port, sock):
     while not stop_sending_KPAs.is_set():
         event_timer = stop_sending_KPAs.wait(10)
         if not event_timer:
@@ -102,15 +103,24 @@ def keep_alive_client(server_ip, server_port, sock):
                         if SHOW_ADDITIONAL_FRAGMENT_INFO:
                             print(decoded_data)
                 except socket.error as e:
-                    print("[x] ACK was NOT received for the Keep Alive message. The connection " + str(e))
+                    print("[x] ACK was NOT received for the Keep Alive message. Closing the socket.\n" + str(e))
                     stop_sending_KPAs.set()
                     sock.close()
 
             except socket.error as e:
-                print("")
-                print("[x] Failed to send Keep alive message " + str(e))
+                print("[x] Failed to send Keep alive message. Closing the socket.\n" + str(e))
                 stop_sending_KPAs.set()
                 sock.close()
+
+
+def server_logout(sock):
+    while True:
+        user_input = input()
+        if int(user_input) == 0:
+            print("Logging out, closing socket...")
+            stop_receiving_KPAs.set()
+            sock.close()
+            break
 
 
 def configure_server():
@@ -125,28 +135,35 @@ def configure_server():
     # bind IP address
     sock.bind((server_ip, int(server_port)))
 
-    while True:
-        buffer = server(server_ip, server_port, sock, path)
-        if buffer == 0:
-            return
+    action = input("Server's IP address is %s.\n"
+                   "Choose from the options:\n"
+                   "[0] Sign out\n"
+                   "[1] Listen on port %s\n" % (server_ip, server_port))
+
+    if int(action) == 0:
+        return
+
+    else:
+        server_input_thread = threading.Thread(target=server_logout, args=(sock,))
+        server_input_thread.start()
+        while True:
+            buffer = server(sock, path, stop_receiving_KPAs)
+            if buffer == 0:
+                server_input_thread.join()
+                return
 
 
-def server(server_ip, server_port, sock, path):
+def server(sock, path, event):
     received_message = []
     heapq.heapify(received_message)
     final_message = ""
-    print("Server's IP address is %s." % server_ip)
 
-    while True:
+    if event.is_set():
+        return 0
 
-        choice2 = input("Choose from the options:\n"
-                        "[0] Sign out\n"
-                        "[1] Listen on port %s\n" % server_port)
+    while not event.is_set():
 
-        if int(choice2) == 0:
-            return 0
-
-        print(">>> The server is waiting to receive data <<<")
+        print("\n>>> The server is live and ready to receive data <<<\n")
 
         try:
             data, addr = sock.recvfrom(MAX_DATA_SIZE)
@@ -177,14 +194,16 @@ def server(server_ip, server_port, sock, path):
                         if SHOW_ADDITIONAL_FRAGMENT_INFO:
                             print(decoded_ack_to_inf_packet)
                 except socket.error as e:
-                    print("[x] Failed to send ACK to the client for the information message " + str(e))
+                    print(
+                        "[x] Failed to send ACK to the client for the information message. Closing the socket.\n" + str(
+                            e))
                     return 0
 
-                print(
-                    "[i] The server expects a %lu byte message from the client, divided into %d packets. The message is "
-                    "fragmented by %lu bytes. A total of %lu bytes will be transferred.\n "
-                    % (received_data['sequence_number'], fragment_count, received_data['fragment_size'],
-                       (fragment_count * int(CUSTOM_HEADER_SIZE)) + received_data['sequence_number']))
+                print("")
+                print("[i] The server expects a %lu byte message from the client, divided into %d packets. The message "
+                      "is fragmented by %lu bytes. A total of %lu bytes will be transferred.\n "
+                      % (received_data['sequence_number'], fragment_count, received_data['fragment_size'],
+                         (fragment_count * int(CUSTOM_HEADER_SIZE)) + received_data['sequence_number']))
 
                 buffer = 0
                 while buffer < fragment_count:
@@ -279,7 +298,6 @@ def server(server_ip, server_port, sock, path):
             # sending ACK for the Keep Alive message
             if received_data['packet_type'] == KPA:
                 if SHOW_EACH_FRAGMENT:
-                    print("")
                     print("[ ] Keep Alive message was received")
                     if SHOW_ADDITIONAL_FRAGMENT_INFO:
                         print(received_data)
@@ -296,12 +314,13 @@ def server(server_ip, server_port, sock, path):
                             print(sent_decoded_kpa_ack)
 
                 except socket.error as e:
-                    print("[x] Failed to send ACK for the Keep Alive message " + str(e))
+                    print("[x] Failed to send ACK for the Keep Alive message. Closing the socket.\n" + str(e))
+                    sock.close()
                     return 0
 
         except socket.error as e:
-            print("")
-            print("[x] No packets were received from the client. The connection " + str(e) + "\n")
+            print("[x] No packets were received from the client. Closing the socket.\n" + str(e))
+            sock.close()
             return 0
 
 
@@ -322,7 +341,7 @@ def configure_client():
         if buffer == 1:
             print("[i] Starting Keep Alive in the background\n")
             stop_sending_KPAs.clear()
-            keep_alive_thread = threading.Thread(target=keep_alive_client, args=(server_ip, server_port, sock))
+            keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
             keep_alive_thread.start()
 
 
@@ -423,7 +442,8 @@ def client(server_ip, server_port, sock):
 
                     if file_name == "<text>":
                         fragment_data = bytes(
-                            message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)], 'utf-8')
+                            message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)],
+                            'utf-8')
 
                     else:
                         fragment_data = bytes(
@@ -455,12 +475,16 @@ def client(server_ip, server_port, sock):
                             decoded_response_to_dat_fragment = decode_data(response_to_dat_fragment)
 
                             # response to the sent fragment was ACK
-                            if decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment['sequence_number'] \
-                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment['fragment_count'] \
-                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment['fragment_size'] \
+                            if decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
+                                'sequence_number'] \
+                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
+                                'fragment_count'] \
+                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
+                                'fragment_size'] \
                                     and decoded_response_to_dat_fragment['packet_type'] == ACK:
                                 if SHOW_EACH_FRAGMENT:
-                                    print("[√] ACK for the Packet no. %d was received" % (decoded_response_to_dat_fragment['sequence_number']))
+                                    print("[√] ACK for the Packet no. %d was received" % (
+                                        decoded_response_to_dat_fragment['sequence_number']))
                                     if SHOW_ADDITIONAL_FRAGMENT_INFO:
                                         print(decoded_response_to_dat_fragment)
 
@@ -468,9 +492,12 @@ def client(server_ip, server_port, sock):
                                 buffer += 1
 
                             # response to the sent fragment was NACK
-                            elif decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment['sequence_number'] \
-                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment['fragment_count'] \
-                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment['fragment_size'] \
+                            elif decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
+                                'sequence_number'] \
+                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
+                                'fragment_count'] \
+                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
+                                'fragment_size'] \
                                     and decoded_response_to_dat_fragment['packet_type'] == NACK:
                                 if SHOW_EACH_FRAGMENT:
                                     print("[!] NACK for the Packet no. %d was received" % (
@@ -490,12 +517,12 @@ def client(server_ip, server_port, sock):
 
                         # if receiving the response for the DAT fragment failed somehow
                         except socket.error as e:
-                            print("No response was received for the Packet " + str(e))
+                            print("No response was received for the Packet\n" + str(e))
                             return 0
 
                     # if sending the DAT fragment failed somehow
                     except socket.error as e:
-                        print("[x] Failed to send Packet no. %d | %d bytes " % (
+                        print("[x] Failed to send Packet no. %d | %d bytes\n" % (
                             decoded_dat_fragment['sequence_number'],
                             decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE) + str(e))
                         return 0
@@ -509,12 +536,12 @@ def client(server_ip, server_port, sock):
 
         # if receiving response for the INF packet failed somehow
         except socket.error as e:
-            print("[x] Response was not received for the information message from the server " + str(e))
+            print("[x] Response was not received for the information message from the server\n" + str(e))
             return 0
 
     # if sending the INF packet failed somehow
     except socket.error as e:
-        print("[x] The information message was NOT sent to the server " + str(e))
+        print("[x] The information message was NOT sent to the server\n" + str(e))
         return 0
 
 
