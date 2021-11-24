@@ -11,8 +11,8 @@ MAX_DATA_SIZE = 1432
 CUSTOM_HEADER_SIZE = 13
 
 # SWITCHES
-SHOW_EACH_FRAGMENT = False
-SHOW_ADDITIONAL_FRAGMENT_INFO = False
+SHOW_EACH_FRAGMENT = True
+SHOW_ADDITIONAL_FRAGMENT_INFO = True
 
 # PACKET TYPES
 INF = 0
@@ -41,11 +41,21 @@ def decode_data(data):
 
 
 def set_fragment_size():
-    fragment_size = input("Enter the size of the fragments:\n")
-    while int(fragment_size) < 1 or int(fragment_size) > MAX_DATA_SIZE - CUSTOM_HEADER_SIZE:
-        fragment_size = input("[!] You have entered an invalid size. The max fragment size is 1419. Please enter the "
-                              "fragment size again:\n")
-    return fragment_size
+    while True:
+        try:
+            fragment_size = int(input("Enter the size of the fragments:\n"))
+            while int(fragment_size) < 1 or int(fragment_size) > MAX_DATA_SIZE - CUSTOM_HEADER_SIZE:
+
+                try:
+                    fragment_size = int(input(
+                        "[!] You have entered an invalid size. The max fragment size is 1419. Please enter the "
+                        "fragment size again:\n"))
+                except ValueError:
+                    print("Please enter numbers only.")
+
+            return fragment_size
+        except ValueError:
+            print("Please enter numbers only.")
 
 
 def calculate_fragment_count(file_size, fragment_size):
@@ -75,7 +85,7 @@ def create_directory():
         os.makedirs(name=path, mode=mode, exist_ok=True)
     except OSError as e:
         quit("Cannot create folder " + str(e))
-    print("The files will be saved in the directory %s\n" % path)
+    print("The files will be saved in the directory %s" % path)
     return path
 
 
@@ -90,7 +100,6 @@ def client_keep_alive(server_ip, server_port, sock):
             try:
                 sock.sendto(kpa_message, (server_ip, int(server_port)))
                 if SHOW_EACH_FRAGMENT:
-                    print("")
                     print("[ ] Keep Alive message has been sent")
                     if SHOW_ADDITIONAL_FRAGMENT_INFO:
                         print(kpa_message_decoded)
@@ -115,18 +124,29 @@ def client_keep_alive(server_ip, server_port, sock):
 
 def server_logout(sock):
     while True:
-        user_input = input()
-        if int(user_input) == 0:
-            print("Logging out, closing socket...")
-            stop_receiving_KPAs.set()
-            sock.close()
-            break
+        try:
+            user_input = int(input())
+            if int(user_input) == 0:
+                print("Logging out, closing socket...")
+                stop_receiving_KPAs.set()
+                sock.close()
+                break
+        except ValueError:
+            print("Please enter numbers only.")
 
 
 def configure_server():
     print(">>> SERVER <<<\n")
     server_ip = input("[1] Enter the IP address of the server:\n")
-    server_port = input("[2] Enter the port:\n")
+    server_port = 0
+    while True:
+        try:
+            server_port = int(input("[2] Enter the port:\n"))
+            break
+        except ValueError:
+            print("Please enter numbers only.")
+            continue
+
     path = create_directory()
 
     # creating the socket
@@ -135,22 +155,27 @@ def configure_server():
     # bind IP address
     sock.bind((server_ip, int(server_port)))
 
-    action = input("Server's IP address is %s.\n"
-                   "Choose from the options:\n"
-                   "[0] Sign out\n"
-                   "[1] Listen on port %s\n" % (server_ip, server_port))
+    while True:
+        try:
+            action = int(input("\nServer's IP address is %s.\n"
+                               "Choose from the options:\n"
+                               "[0] Sign out\n"
+                               "[1] Listen on port %s\n" % (server_ip, server_port)))
 
-    if int(action) == 0:
-        return
-
-    else:
-        server_input_thread = threading.Thread(target=server_logout, args=(sock,))
-        server_input_thread.start()
-        while True:
-            buffer = server(sock, path, stop_receiving_KPAs)
-            if buffer == 0:
-                server_input_thread.join()
+            if int(action) == 0:
                 return
+
+            else:
+                server_input_thread = threading.Thread(target=server_logout, args=(sock,))
+                server_input_thread.start()
+                while True:
+                    buffer = server(sock, path, stop_receiving_KPAs)
+                    if buffer == 0:
+                        server_input_thread.join()
+                        return
+
+        except ValueError:
+            print("Please enter numbers only.")
 
 
 def server(sock, path, event):
@@ -199,9 +224,8 @@ def server(sock, path, event):
                             e))
                     return 0
 
-                print("")
                 print("[i] The server expects a %lu byte message from the client, divided into %d packets. The message "
-                      "is fragmented by %lu bytes. A total of %lu bytes will be transferred.\n "
+                      "is fragmented by %lu bytes. A total of %lu bytes will be transferred."
                       % (received_data['sequence_number'], fragment_count, received_data['fragment_size'],
                          (fragment_count * int(CUSTOM_HEADER_SIZE)) + received_data['sequence_number']))
 
@@ -280,7 +304,6 @@ def server(sock, path, event):
                                 return 0
 
                 if type_of_message == "<text>":
-                    print("")
                     print("[i] Received message from %s: '%s'" % (addr[0], final_message))
 
                 else:
@@ -288,7 +311,6 @@ def server(sock, path, event):
                         while received_message:
                             file.write(heapq.heappop(received_message)[1])
 
-                    print("")
                     print("[i] Received file from %s: '%s' has been saved under directory %s" % (
                         addr[0], type_of_message, path))
 
@@ -327,7 +349,14 @@ def server(sock, path, event):
 def configure_client():
     print(">>> CLIENT <<<\n")
     server_ip = input("[1] Enter the IP address of the server:\n")
-    server_port = input("[2] Enter the port:\n")
+    server_port = 0
+    while True:
+        try:
+            server_port = int(input("[2] Enter the port:\n"))
+            break
+        except ValueError:
+            print("Please enter numbers only.")
+            continue
 
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -339,7 +368,7 @@ def configure_client():
             sock.close()
             return
         if buffer == 1:
-            print("[i] Starting Keep Alive in the background\n")
+            print("[i] Starting Keep Alive in the background")
             stop_sending_KPAs.clear()
             keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
             keep_alive_thread.start()
@@ -354,206 +383,225 @@ def client(server_ip, server_port, sock):
     packet_type = 0
     byte_array = bytearray()
 
-    action = input("Choose from the options:\n"
-                   "[0] - Sign out\n"
-                   "[1] - Send a text message\n"
-                   "[2] - Simulation of a text message error\n"
-                   "[3] - Send a file\n"
-                   "[4] - Simulation of a file transfer error\n")
-
-    if int(action) == 0:
-        return 0
-
-    elif int(action) == 1 or int(action) == 2:
-        fragment_size = set_fragment_size()
-        message = input("Enter a text message\n")
-        file_size = len(message)
-        file_name = "<text>"
-        if int(action) == 1:
-            defected = False
-        elif int(action) == 2:
-            defected = True
-        packet_type = DAT
-
-    elif int(action) == 3 or int(action) == 4:
-        fragment_size = set_fragment_size()
-        path_and_file_name = input("Enter the file name (enter the full path):\n")
-        file_name = os.path.basename(path_and_file_name)
-        file_size = os.path.getsize(path_and_file_name)
-
-        with open(path_and_file_name, "rb") as file:
-            while True:
-                byte = file.read(1)
-                if not byte:
-                    break
-                byte_array += byte
-        file.close()
-
-        if int(action) == 3:
-            defected = False
-        elif int(action) == 4:
-            defected = True
-        packet_type = DAT
-
-    # calculate fragment count
-    fragment_count = calculate_fragment_count(file_size, fragment_size)
-
-    stop_sending_KPAs.set()
-
-    # creating the INF packet
-    header = create_custom_header(file_size, int(fragment_count), int(fragment_size), INF)
-    temp = header + file_name.encode(encoding='utf-8')
-    crc = zlib.crc32(temp)
-    inf_packet = header + crc.to_bytes(4, 'big') + file_name.encode(encoding='utf-8')
-    decoded_inf_packet = decode_data(inf_packet)
-
-    # sending the INF packet
     try:
-        sock.sendto(inf_packet, (server_ip, int(server_port)))
-        if SHOW_EACH_FRAGMENT:
-            print("[ ] The information message has been sent to the server")
-            if SHOW_ADDITIONAL_FRAGMENT_INFO:
-                print(decoded_inf_packet)
+        action = int(input("\nChoose from the options:\n"
+                           "[0] - Sign out\n"
+                           "[1] - Send a text message\n"
+                           "[2] - Simulation of a text message error\n"
+                           "[3] - Send a file\n"
+                           "[4] - Simulation of a file transfer error\n"))
 
-        # receiving response for the INF packet
-        try:
-            response_to_inf_packet, addr = sock.recvfrom(MAX_DATA_SIZE)
-            decoded_inf_response = decode_data(response_to_inf_packet)
-
-            # the response was ACK and the frame had the same content
-            if decoded_inf_response['sequence_number'] == decoded_inf_packet['sequence_number'] and \
-                    decoded_inf_response['fragment_count'] == decoded_inf_packet['fragment_count'] and \
-                    decoded_inf_response['fragment_size'] == decoded_inf_packet['fragment_size'] and \
-                    decoded_inf_response['data'] == decoded_inf_packet['data'] and \
-                    decoded_inf_response['packet_type'] == ACK:
-
-                if SHOW_EACH_FRAGMENT:
-                    print("[√] ACK was received for the information message from the server")
-                    if SHOW_ADDITIONAL_FRAGMENT_INFO:
-                        print(decoded_inf_response)
-
-                # sending the packets fragment_count times
-                buffer = 0
-                while buffer < int(fragment_count):
-
-                    data_length = calculate_data_length(buffer, file_size, fragment_size)
-
-                    header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
-
-                    if file_name == "<text>":
-                        fragment_data = bytes(
-                            message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)],
-                            'utf-8')
-
-                    else:
-                        fragment_data = bytes(
-                            byte_array[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
-
-                    if defected:
-                        temp = header + fragment_data.join([b'defected'])
-                        defected = False
-                    else:
-                        temp = header + fragment_data
-
-                    crc = zlib.crc32(temp)
-                    dat_fragment = header + crc.to_bytes(4, 'big') + fragment_data
-                    decoded_dat_fragment = decode_data(dat_fragment)
-
-                    # sending the DAT fragment
-                    try:
-                        sock.sendto(dat_fragment, (server_ip, int(server_port)))
-                        if SHOW_EACH_FRAGMENT:
-                            print("[ ] Packet no. %d | %d bytes has been sent" % (
-                                decoded_dat_fragment['sequence_number'],
-                                decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE))
-                            if SHOW_ADDITIONAL_FRAGMENT_INFO:
-                                print(decoded_dat_fragment)
-
-                        # receiving response for the DAT fragment
-                        try:
-                            response_to_dat_fragment, addr = sock.recvfrom(MAX_DATA_SIZE)
-                            decoded_response_to_dat_fragment = decode_data(response_to_dat_fragment)
-
-                            # response to the sent fragment was ACK
-                            if decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
-                                'sequence_number'] \
-                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
-                                'fragment_count'] \
-                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
-                                'fragment_size'] \
-                                    and decoded_response_to_dat_fragment['packet_type'] == ACK:
-                                if SHOW_EACH_FRAGMENT:
-                                    print("[√] ACK for the Packet no. %d was received" % (
-                                        decoded_response_to_dat_fragment['sequence_number']))
-                                    if SHOW_ADDITIONAL_FRAGMENT_INFO:
-                                        print(decoded_response_to_dat_fragment)
-
-                                # successfully transferred fragments
-                                buffer += 1
-
-                            # response to the sent fragment was NACK
-                            elif decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
-                                'sequence_number'] \
-                                    and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
-                                'fragment_count'] \
-                                    and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
-                                'fragment_size'] \
-                                    and decoded_response_to_dat_fragment['packet_type'] == NACK:
-                                if SHOW_EACH_FRAGMENT:
-                                    print("[!] NACK for the Packet no. %d was received" % (
-                                        decoded_response_to_dat_fragment['sequence_number']))
-                                    if SHOW_ADDITIONAL_FRAGMENT_INFO:
-                                        print(decoded_response_to_dat_fragment)
-
-                            # all fragments were transferred successfully
-                            if buffer == int(fragment_count):
-                                if file_name == "<text>":
-                                    print("")
-                                    print("[√] The message '%s' has been sent successfully\n" % message)
-
-                                else:
-                                    print("")
-                                    print("[√] The file '%s' has been sent successfully\n" % file_name)
-
-                        # if receiving the response for the DAT fragment failed somehow
-                        except socket.error as e:
-                            print("No response was received for the Packet\n" + str(e))
-                            return 0
-
-                    # if sending the DAT fragment failed somehow
-                    except socket.error as e:
-                        print("[x] Failed to send Packet no. %d | %d bytes\n" % (
-                            decoded_dat_fragment['sequence_number'],
-                            decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE) + str(e))
-                        return 0
-
-            # if the response was something different than what we expected
-            else:
-                print("[!] Something went terribly wrong.\n")
-                return 0
-
-            return 1
-
-        # if receiving response for the INF packet failed somehow
-        except socket.error as e:
-            print("[x] Response was not received for the information message from the server\n" + str(e))
+        if int(action) == 0:
             return 0
 
-    # if sending the INF packet failed somehow
-    except socket.error as e:
-        print("[x] The information message was NOT sent to the server\n" + str(e))
-        return 0
+        elif int(action) == 1 or int(action) == 2:
+            fragment_size = set_fragment_size()
+            message = input("Enter a text message\n")
+            file_size = len(message)
+            file_name = "<text>"
+            if int(action) == 1:
+                defected = False
+            elif int(action) == 2:
+                defected = True
+            packet_type = DAT
+
+        elif int(action) == 3 or int(action) == 4:
+            fragment_size = set_fragment_size()
+            while True:
+                try:
+                    path_and_file_name = input("Enter the file name (enter the full path):\n")
+                    file_name = os.path.basename(path_and_file_name)
+                    file_size = os.path.getsize(path_and_file_name)
+
+                    with open(path_and_file_name, "rb") as file:
+                        while True:
+                            byte = file.read(1)
+                            if not byte:
+                                break
+                            byte_array += byte
+                    file.close()
+
+                    if int(action) == 3:
+                        defected = False
+                    elif int(action) == 4:
+                        defected = True
+                    packet_type = DAT
+
+                    break
+                except FileNotFoundError:
+                    print("Please enter the file's absolute path correctly.")
+                    continue
+                except OSError:
+                    print("Please enter the file's absolute path correctly.")
+                    continue
+
+        # calculate fragment count
+        fragment_count = calculate_fragment_count(file_size, fragment_size)
+
+        stop_sending_KPAs.set()
+
+        # creating the INF packet
+        header = create_custom_header(file_size, int(fragment_count), int(fragment_size), INF)
+        temp = header + file_name.encode(encoding='utf-8')
+        crc = zlib.crc32(temp)
+        inf_packet = header + crc.to_bytes(4, 'big') + file_name.encode(encoding='utf-8')
+        decoded_inf_packet = decode_data(inf_packet)
+
+        # sending the INF packet
+        try:
+            sock.sendto(inf_packet, (server_ip, int(server_port)))
+            if SHOW_EACH_FRAGMENT:
+                print("[ ] The information message has been sent to the server")
+                if SHOW_ADDITIONAL_FRAGMENT_INFO:
+                    print(decoded_inf_packet)
+
+            # receiving response for the INF packet
+            try:
+                response_to_inf_packet, addr = sock.recvfrom(MAX_DATA_SIZE)
+                decoded_inf_response = decode_data(response_to_inf_packet)
+
+                # the response was ACK and the received frame had the same content
+                if decoded_inf_response['sequence_number'] == decoded_inf_packet['sequence_number'] and \
+                        decoded_inf_response['fragment_count'] == decoded_inf_packet['fragment_count'] and \
+                        decoded_inf_response['fragment_size'] == decoded_inf_packet['fragment_size'] and \
+                        decoded_inf_response['data'] == decoded_inf_packet['data'] and \
+                        decoded_inf_response['packet_type'] == ACK:
+
+                    if SHOW_EACH_FRAGMENT:
+                        print("[√] ACK was received for the information message from the server")
+                        if SHOW_ADDITIONAL_FRAGMENT_INFO:
+                            print(decoded_inf_response)
+
+                    # sending the packets fragment_count times
+                    buffer = 0
+                    while buffer < int(fragment_count):
+
+                        data_length = calculate_data_length(buffer, file_size, fragment_size)
+
+                        header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
+
+                        if file_name == "<text>":
+                            fragment_data = bytes(
+                                message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)],
+                                'utf-8')
+
+                        else:
+                            fragment_data = bytes(
+                                byte_array[
+                                buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
+
+                        if defected:
+                            defected_data = 69
+                            defected_data_bytes = defected_data.to_bytes(1, 'big')
+                            temp = header + fragment_data + defected_data_bytes
+                            defected = False
+                        else:
+                            temp = header + fragment_data
+
+                        crc = zlib.crc32(temp)
+                        dat_fragment = header + crc.to_bytes(4, 'big') + fragment_data
+                        decoded_dat_fragment = decode_data(dat_fragment)
+
+                        # sending the DAT fragment
+                        try:
+                            sock.sendto(dat_fragment, (server_ip, int(server_port)))
+                            if SHOW_EACH_FRAGMENT:
+                                print("[ ] Packet no. %d | %d bytes has been sent" % (
+                                    decoded_dat_fragment['sequence_number'],
+                                    decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE))
+                                if SHOW_ADDITIONAL_FRAGMENT_INFO:
+                                    print(decoded_dat_fragment)
+
+                            # receiving response for the DAT fragment
+                            try:
+                                response_to_dat_fragment, addr = sock.recvfrom(MAX_DATA_SIZE)
+                                decoded_response_to_dat_fragment = decode_data(response_to_dat_fragment)
+
+                                # response to the sent fragment was ACK
+                                if decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
+                                    'sequence_number'] \
+                                        and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
+                                    'fragment_count'] \
+                                        and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
+                                    'fragment_size'] \
+                                        and decoded_response_to_dat_fragment['packet_type'] == ACK:
+                                    if SHOW_EACH_FRAGMENT:
+                                        print("[√] ACK for the Packet no. %d was received" % (
+                                            decoded_response_to_dat_fragment['sequence_number']))
+                                        if SHOW_ADDITIONAL_FRAGMENT_INFO:
+                                            print(decoded_response_to_dat_fragment)
+
+                                    # successfully transferred fragments
+                                    buffer += 1
+
+                                # response to the sent fragment was NACK
+                                elif decoded_response_to_dat_fragment['sequence_number'] == decoded_dat_fragment[
+                                    'sequence_number'] \
+                                        and decoded_response_to_dat_fragment['fragment_count'] == decoded_dat_fragment[
+                                    'fragment_count'] \
+                                        and decoded_response_to_dat_fragment['fragment_size'] == decoded_dat_fragment[
+                                    'fragment_size'] \
+                                        and decoded_response_to_dat_fragment['packet_type'] == NACK:
+                                    if SHOW_EACH_FRAGMENT:
+                                        print("[!] NACK for the Packet no. %d was received" % (
+                                            decoded_response_to_dat_fragment['sequence_number']))
+                                        if SHOW_ADDITIONAL_FRAGMENT_INFO:
+                                            print(decoded_response_to_dat_fragment)
+
+                                # all fragments were transferred successfully
+                                if buffer == int(fragment_count):
+                                    if file_name == "<text>":
+                                        print("[√] The message '%s' has been sent successfully" % message)
+
+                                    else:
+                                        print("[√] The file '%s' has been sent successfully" % file_name)
+
+                            # if receiving the response for the DAT fragment failed somehow
+                            except socket.error as e:
+                                print("No response was received for the Packet\n" + str(e))
+                                return 0
+
+                        # if sending the DAT fragment failed somehow
+                        except socket.error as e:
+                            print("[x] Failed to send Packet no. %d | %d bytes\n" % (
+                                decoded_dat_fragment['sequence_number'],
+                                decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE) + str(e))
+                            return 0
+
+                # if the response was something different than what we expected
+                else:
+                    print("[!] Something went terribly wrong.")
+                    return 0
+
+                return 1
+
+            # if receiving response for the INF packet failed somehow
+            except socket.error as e:
+                print("[x] Response was not received for the information message from the server\n" + str(e))
+                return 0
+
+        # if sending the INF packet failed somehow
+        except socket.error as e:
+            print("[x] The information message was NOT sent to the server\n" + str(e))
+            return 0
+
+    except ValueError:
+        print("Please enter numbers only.")
 
 
 if __name__ == '__main__':
     stop_sending_KPAs.set()
 
     while True:
-        choice = input("Choose from the options:\n"
-                       "[1] - Server\n"
-                       "[2] - Client\n")
+        try:
+            choice = int(input("\nChoose from the options:\n"
+                               "[1] - Server\n"
+                               "[2] - Client\n"))
 
-        if int(choice) == 1:
-            configure_server()
-        elif int(choice) == 2:
-            configure_client()
+            if int(choice) == 1:
+                configure_server()
+            elif int(choice) == 2:
+                configure_client()
+
+        except ValueError:
+            print("Please enter numbers only.")
