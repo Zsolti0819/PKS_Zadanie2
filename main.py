@@ -3,6 +3,7 @@ import socket
 import heapq
 import zlib
 import threading
+import ipaddress
 
 stop_sending_KPAs = threading.Event()
 stop_receiving_KPAs = threading.Event()
@@ -20,6 +21,37 @@ ACK = 1
 NACK = 2
 DAT = 3
 KPA = 4
+
+
+def validate_ip_address(address):
+    try:
+        ipaddress.ip_address(address)
+        return True
+    except ValueError:
+        return False
+
+
+def input_port():
+    server_port = 0
+    while True:
+        try:
+            server_port = int(input("[2] Enter the port:\n"))
+            break
+        except ValueError:
+            print("Please enter numbers only.")
+            continue
+    return server_port
+
+
+def input_IP():
+    while True:
+        server_ip = input("[1] Enter the IP address of the server:\n")
+        if validate_ip_address(server_ip):
+            break
+        else:
+            print("Please enter a valid IP address.")
+            continue
+    return server_ip
 
 
 def create_custom_header(sequence_number, fragment_count, fragment_size, packet_type):
@@ -137,15 +169,9 @@ def server_logout(sock):
 
 def configure_server():
     print(">>> SERVER <<<\n")
-    server_ip = input("[1] Enter the IP address of the server:\n")
-    server_port = 0
-    while True:
-        try:
-            server_port = int(input("[2] Enter the port:\n"))
-            break
-        except ValueError:
-            print("Please enter numbers only.")
-            continue
+
+    server_ip = input_IP()
+    server_port = input_port()
 
     path = create_directory()
 
@@ -188,7 +214,8 @@ def server(sock, path, event):
 
     while not event.is_set():
 
-        print("\n>>> The server is live and ready to receive data <<<\n")
+        print("\n>>> The server is live and ready to receive data <<<\n"
+              "[0] - Log out (Will close the socket)")
 
         try:
             data, addr = sock.recvfrom(MAX_DATA_SIZE)
@@ -348,15 +375,9 @@ def server(sock, path, event):
 
 def configure_client():
     print(">>> CLIENT <<<\n")
-    server_ip = input("[1] Enter the IP address of the server:\n")
-    server_port = 0
-    while True:
-        try:
-            server_port = int(input("[2] Enter the port:\n"))
-            break
-        except ValueError:
-            print("Please enter numbers only.")
-            continue
+
+    server_ip = input_IP()
+    server_port = input_port()
 
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -487,8 +508,7 @@ def client(server_ip, server_port, sock):
 
                         else:
                             fragment_data = bytes(
-                                byte_array[
-                                buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
+                                byte_array[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
 
                         if defected:
                             defected_data = 69
@@ -595,10 +615,13 @@ if __name__ == '__main__':
     while True:
         try:
             choice = int(input("\nChoose from the options:\n"
-                               "[1] - Server\n"
-                               "[2] - Client\n"))
+                               "[0] - Quit application\n"
+                               "[1] - Log in as server\n"
+                               "[2] - Log in as client\n"))
 
-            if int(choice) == 1:
+            if int(choice) == 0:
+                quit()
+            elif int(choice) == 1:
                 configure_server()
             elif int(choice) == 2:
                 configure_client()
