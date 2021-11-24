@@ -14,6 +14,7 @@ CUSTOM_HEADER_SIZE = 13
 # SWITCHES
 SHOW_EACH_FRAGMENT = True
 SHOW_ADDITIONAL_FRAGMENT_INFO = True
+DEBUG_MODE = False
 
 # PACKET TYPES
 INF = 0
@@ -144,12 +145,18 @@ def client_keep_alive(server_ip, server_port, sock):
                         if SHOW_ADDITIONAL_FRAGMENT_INFO:
                             print(decoded_data)
                 except socket.error as e:
-                    print("[x] ACK was NOT received for the Keep Alive message. Closing the socket.\n" + str(e))
+                    if DEBUG_MODE:
+                        print("[x] ACK was NOT received for the Keep Alive message. Closing the socket.\n" + str(e))
+                    else:
+                        print("[x] ACK was NOT received for the Keep Alive message. Closing the socket.\n")
                     stop_sending_KPAs.set()
                     sock.close()
 
             except socket.error as e:
-                print("[x] Failed to send Keep alive message. Closing the socket.\n" + str(e))
+                if DEBUG_MODE:
+                    print("[x] Failed to send Keep alive message. Closing the socket.\n" + str(e))
+                else:
+                    print("[x] Failed to send Keep alive message. Closing the socket.\n")
                 stop_sending_KPAs.set()
                 sock.close()
 
@@ -159,12 +166,14 @@ def server_logout(sock):
         try:
             user_input = int(input())
             if int(user_input) == 0:
-                print("Logging out, closing socket...")
+                print("Logging out...")
                 stop_receiving_KPAs.set()
                 sock.close()
                 break
+            else:
+                print("Please enter 0 to log out.")
         except ValueError:
-            print("Please enter numbers only.")
+            print("Please enter 0 to log out.")
 
 
 def configure_server():
@@ -181,27 +190,15 @@ def configure_server():
     # bind IP address
     sock.bind((server_ip, int(server_port)))
 
+    server_input_thread = threading.Thread(target=server_logout, args=(sock,))
+    server_input_thread.start()
+
     while True:
-        try:
-            action = int(input("\nServer's IP address is %s.\n"
-                               "Choose from the options:\n"
-                               "[0] Sign out\n"
-                               "[1] Listen on port %s\n" % (server_ip, server_port)))
-
-            if int(action) == 0:
-                return
-
-            else:
-                server_input_thread = threading.Thread(target=server_logout, args=(sock,))
-                server_input_thread.start()
-                while True:
-                    buffer = server(sock, path, stop_receiving_KPAs)
-                    if buffer == 0:
-                        server_input_thread.join()
-                        return
-
-        except ValueError:
-            print("Please enter numbers only.")
+        buffer = server(sock, path, stop_receiving_KPAs)
+        if buffer == 0:
+            stop_receiving_KPAs.clear()
+            server_input_thread.join()
+            return
 
 
 def server(sock, path, event):
@@ -209,10 +206,7 @@ def server(sock, path, event):
     heapq.heapify(received_message)
     final_message = ""
 
-    if event.is_set():
-        return 0
-
-    while not event.is_set():
+    while True:
 
         print("\n>>> The server is live and ready to receive data <<<\n"
               "[0] - Log out (Will close the socket)")
@@ -246,9 +240,12 @@ def server(sock, path, event):
                         if SHOW_ADDITIONAL_FRAGMENT_INFO:
                             print(decoded_ack_to_inf_packet)
                 except socket.error as e:
-                    print(
-                        "[x] Failed to send ACK to the client for the information message. Closing the socket.\n" + str(
-                            e))
+                    if DEBUG_MODE:
+                        print(
+                            "[x] Failed to send ACK to the client for the information message. Closing the socket.\n" + str(
+                                e))
+                    else:
+                        print("[x] Failed to send ACK to the client for the information message. Closing the socket.\n")
                     return 0
 
                 print("[i] The server expects a %lu byte message from the client, divided into %d packets. The message "
@@ -297,8 +294,12 @@ def server(sock, path, event):
                                         print(sent_decoded_fr_ack_message)
                                 buffer += 1
                             except socket.error as e:
-                                print("[x] Failed to send ACK for Packet no. %d " % (
+                                if DEBUG_MODE:
+                                    print("[x] Failed to send ACK for Packet no. %d " % (
                                     sent_decoded_fr_ack_message['sequence_number']) + str(e))
+                                else:
+                                    print("[x] Failed to send ACK for Packet no. %d " % (
+                                    sent_decoded_fr_ack_message['sequence_number']))
                                 return 0
 
                         # crc is NOT correct
@@ -326,8 +327,12 @@ def server(sock, path, event):
                                     if SHOW_ADDITIONAL_FRAGMENT_INFO:
                                         print(sent_decoded_fr_nack_message)
                             except socket.error as e:
-                                print("[x] Failed to send NACK for Packet no. %d " % (
+                                if DEBUG_MODE:
+                                    print("[x] Failed to send NACK for Packet no. %d " % (
                                     fr_nack_message['sequence_number']) + str(e))
+                                else:
+                                    print("[x] Failed to send NACK for Packet no. %d " % (
+                                    fr_nack_message['sequence_number']))
                                 return 0
 
                 if type_of_message == "<text>":
@@ -343,6 +348,7 @@ def server(sock, path, event):
 
                 sock.settimeout(20)
                 final_message = ""
+                return 1
 
             # sending ACK for the Keep Alive message
             if received_data['packet_type'] == KPA:
@@ -361,15 +367,20 @@ def server(sock, path, event):
                         print("[√] ACK has been sent for the Keep Alive message")
                         if SHOW_ADDITIONAL_FRAGMENT_INFO:
                             print(sent_decoded_kpa_ack)
+                    return 1
 
                 except socket.error as e:
-                    print("[x] Failed to send ACK for the Keep Alive message. Closing the socket.\n" + str(e))
-                    sock.close()
+                    if DEBUG_MODE:
+                        print("[x] Failed to send ACK for the Keep Alive message. Closing the socket.\n" + str(e))
+                    else:
+                        print("[x] Failed to send ACK for the Keep Alive message. Closing the socket.\n")
                     return 0
 
         except socket.error as e:
-            print("[x] No packets were received from the client. Closing the socket.\n" + str(e))
-            sock.close()
+            if DEBUG_MODE:
+                print("[x] No packets were received from the client. Closing the socket.\n" + str(e))
+            else:
+                print("[x] No packets were received from the client. The connection timed out. Press 0 to log out")
             return 0
 
 
@@ -508,7 +519,8 @@ def client(server_ip, server_port, sock):
 
                         else:
                             fragment_data = bytes(
-                                byte_array[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
+                                byte_array[
+                                buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)])
 
                         if defected:
                             defected_data = 69
@@ -578,14 +590,22 @@ def client(server_ip, server_port, sock):
 
                             # if receiving the response for the DAT fragment failed somehow
                             except socket.error as e:
-                                print("No response was received for the Packet\n" + str(e))
+                                if DEBUG_MODE:
+                                    print("No response was received for the Packet\n" + str(e))
+                                else:
+                                    print("No response was received for the Packet\n")
                                 return 0
 
                         # if sending the DAT fragment failed somehow
                         except socket.error as e:
-                            print("[x] Failed to send Packet no. %d | %d bytes\n" % (
+                            if DEBUG_MODE:
+                                print("[x] Failed to send Packet no. %d | %d bytes\n" % (
                                 decoded_dat_fragment['sequence_number'],
                                 decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE) + str(e))
+                            else:
+                                print("[x] Failed to send Packet no. %d | %d bytes\n" % (
+                                decoded_dat_fragment['sequence_number'],
+                                decoded_dat_fragment['fragment_size'] + CUSTOM_HEADER_SIZE))
                             return 0
 
                 # if the response was something different than what we expected
@@ -597,12 +617,18 @@ def client(server_ip, server_port, sock):
 
             # if receiving response for the INF packet failed somehow
             except socket.error as e:
-                print("[x] Response was not received for the information message from the server\n" + str(e))
+                if DEBUG_MODE:
+                    print("[x] Response was not received for the information message from the server\n" + str(e))
+                else:
+                    print("[x] Response was not received for the information message from the server\n")
                 return 0
 
         # if sending the INF packet failed somehow
         except socket.error as e:
-            print("[x] The information message was NOT sent to the server\n" + str(e))
+            if DEBUG_MODE:
+                print("[x] The information message was NOT sent to the server\n" + str(e))
+            else:
+                print("[x] The information message was NOT sent to the server\n")
             return 0
 
     except ValueError:
