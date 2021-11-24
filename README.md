@@ -1,1 +1,1 @@
-"# PKS_Zadanie2_python" 
+"# PKS_Zadanie2" 
