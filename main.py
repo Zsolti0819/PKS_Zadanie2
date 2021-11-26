@@ -37,11 +37,11 @@ def validate_ip_address(address):
 
 def input_IP():
     while True:
-        server_ip = input("[1] Enter the IP address of the server:\n")
+        server_ip = input("Enter the IP address of the server:\n")
         if validate_ip_address(server_ip):
             break
         else:
-            print("Please enter a valid IP address.")
+            print("(!) Please enter a valid IP address.")
             continue
     return server_ip
 
@@ -50,23 +50,23 @@ def input_port():
     server_port = 0
     while True:
         try:
-            server_port = int(input("[2] Enter the port:\n"))
+            server_port = int(input("Enter the port:\n"))
             break
         except ValueError:
-            print("Please enter numbers only.")
+            print("(!) Please enter numbers only.")
             continue
     return server_port
 
 
 def create_directory():
-    directory = input("[3] Enter the name of the folder where you want to save the files:\n")
+    directory = input("Enter the name of the folder where you want to save the files:\n")
     parent_directory = "C:\\Users\\destr\\PycharmProjects\\PKS_Zadanie2"
     path = os.path.join(parent_directory, directory)
     mode = 0o777
     try:
         os.makedirs(name=path, mode=mode, exist_ok=True)
     except OSError as e:
-        quit("Cannot create folder " + str(e))
+        quit("(x)Cannot create folder " + str(e))
     print("The files will be saved in the directory %s" % path)
     return path
 
@@ -86,7 +86,7 @@ def set_fragment_size():
 
             return fragment_size
         except ValueError:
-            print("Please enter numbers only.")
+            print("(!) Please enter numbers only.")
 
 
 def calculate_fragment_count(file_size, fragment_size):
@@ -135,9 +135,9 @@ def server_logout(sock):
                 sock.close()
                 break
             else:
-                print("Please enter 0 to close the socket.")
+                print("(!) Please enter 0 to close the socket.")
         except ValueError:
-            print("Please enter 0 to close the socket.")
+            print("(!) Please enter 0 to close the socket.")
 
 
 def configure_server():
@@ -173,7 +173,7 @@ def server(sock, path):
     while True:
 
         print(">>> The server is live and ready to receive data <<<\n"
-              "[0] - Log out (Will close the socket)")
+              "(0) - Log out (Will close the socket)")
 
         try:
             data, addr = sock.recvfrom(MAX_DATA_SIZE_IN_BYTES)
@@ -341,7 +341,7 @@ def server(sock, path):
 
         except socket.timeout:
             print("[x] No packets were received from the client. The connection timed out.\n"
-                  "[0] - Log out (Will close the socket)")
+                  "(0) - Log out (Will close the socket)")
             return 0
         except socket.error as e:
             if DEBUG_MODE:
@@ -421,11 +421,11 @@ def client(server_ip, server_port, sock):
 
     try:
         action = int(input("Choose from the options:\n"
-                           "[0] - Sign out\n"
-                           "[1] - Send a text message\n"
-                           "[2] - Simulation of a text message error\n"
-                           "[3] - Send a file\n"
-                           "[4] - Simulation of a file transfer error\n"))
+                           "(0) - Sign out\n"
+                           "(1) - Send a text message\n"
+                           "(2) - Simulation of a text message error\n"
+                           "(3) - Send a file\n"
+                           "(4) - Simulation of a file transfer error\n"))
 
         if int(action) == 0:
             return 0
@@ -645,9 +645,9 @@ if __name__ == '__main__':
     while True:
         try:
             choice = int(input("Choose from the options:\n"
-                               "[0] - Quit application\n"
-                               "[1] - Log in as server\n"
-                               "[2] - Log in as client\n"))
+                               "(0) - Quit application\n"
+                               "(1) - Log in as server\n"
+                               "(2) - Log in as client\n"))
 
             if int(choice) == 0:
                 quit()
