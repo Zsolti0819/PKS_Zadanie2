@@ -47,9 +47,9 @@ def print_server_dat_recv_success(received_fragment):
 
 def print_server_dat_recv_fail(buffer, e):
     if DEBUG_MODE:
-        print("[x] Packet no. %d was NOT received\n" % buffer + 1, str(e))
+        print("[x] Packet no. %d was NOT received\n" % int(buffer + 1), str(e))
     else:
-        print("[x] Packet no. %d was NOT received" % buffer + 1)
+        print("[x] Packet no. %d was NOT received" % int(buffer + 1))
 
 
 def print_server_dat_recv_success_crc_error(received_fragment):
@@ -186,9 +186,9 @@ def print_client_dat_nack_recv_success(packet_decoded_recv):
 
 def print_client_dat_response_recv_fail(buffer, e):
     if DEBUG_MODE:
-        print("No response was received for the Packet %d\n" % buffer + 1, str(e))
+        print("No response was received for the Packet %d\n" % int(buffer + 1), str(e))
     else:
-        print("No response was received for the Packet %d" % buffer + 1)
+        print("No response was received for the Packet %d" % int(buffer + 1))
 
 
 def print_client_kpa_send_success(kpa_message_decoded):

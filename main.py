@@ -455,6 +455,7 @@ def client(server_ip, server_port, sock):
 
                     # sending the packets fragment_count times
                     buffer = 0
+                    defected_sent = False
                     while buffer < int(fragment_count):
 
                         # calculating fragment_size for the actual packet
@@ -473,10 +474,16 @@ def client(server_ip, server_port, sock):
                                                       fragment_size)])
 
                         if defected:
-                            defected_data = 69
-                            defected_data_bytes = defected_data.to_bytes(1, 'big')
-                            temp = header + fragment_data + defected_data_bytes
-                            defected = False
+                            if (buffer + 1) % 1 == 0 and defected_sent is False:
+                                defected_data = 69
+                                defected_data_bytes = defected_data.to_bytes(1, 'big')
+                                temp = header + fragment_data + defected_data_bytes
+                                defected_sent = True
+
+                            else:
+                                temp = header + fragment_data
+                                defected_sent = False
+
                         else:
                             temp = header + fragment_data
 
@@ -502,6 +509,8 @@ def client(server_ip, server_port, sock):
                                 # response to the sent fragment was NACK
                                 elif has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv, NACK):
                                     print_client_dat_nack_recv_success(packet_decoded_recv)
+                                    if (buffer + 1) % 1 == 0:
+                                        defected_sent = True
 
                                 # all fragments were transferred successfully
                                 if buffer == int(fragment_count):
