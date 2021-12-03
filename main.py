@@ -10,10 +10,11 @@ stop_sending_KPAs = threading.Event()
 stop_receiving_KPAs = threading.Event()
 
 # SIZES
-MAX_DATA_SIZE_IN_BYTES = 1432
+MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
 KPA_SENDING_FREQUENCY_IN_SECONDS = 10
+DAMAGE_EVERY_NTH_PACKET = 2
 
 # SWITCHES
 SHOW_EACH_FRAGMENT = True
@@ -60,14 +61,12 @@ def input_port():
 
 
 def create_directory():
-    directory = input("Enter the name of the folder where you want to save the files:\n")
-    parent_directory = "C:\\Users\\destr\\PycharmProjects\\PKS_Zadanie2"
-    path = os.path.join(parent_directory, directory)
+    path = input("Enter the name of the folder where you want to save the files:\n")
     mode = 0o777
     try:
         os.makedirs(name=path, mode=mode, exist_ok=True)
     except OSError as e:
-        quit("(x)Cannot create folder " + str(e))
+        quit("Cannot create folder " + str(e))
     print("The files will be saved in the directory %s" % path)
     return path
 
@@ -80,8 +79,8 @@ def set_fragment_size():
 
                 try:
                     fragment_size = int(input(
-                        "[!] You have entered an invalid size. The max fragment size is 1419. Please enter the "
-                        "fragment size again:\n"))
+                        "[!] You have entered an invalid size. The max fragment size is %d. Please enter the "
+                        "fragment size again:\n" % (MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
                 except ValueError:
                     print("Please enter numbers only.")
 
@@ -369,7 +368,7 @@ def client(server_ip, server_port, sock):
     message = ""
     file_size = 0
     file_name = ""
-    defected = False
+    damaged = False
     packet_type = 0
     byte_array = bytearray()
 
@@ -390,9 +389,9 @@ def client(server_ip, server_port, sock):
             file_size = len(message)
             file_name = "<text>"
             if int(action) == 1:
-                defected = False
+                damaged = False
             elif int(action) == 2:
-                defected = True
+                damaged = True
             packet_type = DAT
 
         elif int(action) == 3 or int(action) == 4:
@@ -412,9 +411,9 @@ def client(server_ip, server_port, sock):
                     file.close()
 
                     if int(action) == 3:
-                        defected = False
+                        damaged = False
                     elif int(action) == 4:
-                        defected = True
+                        damaged = True
                     packet_type = DAT
 
                     break
@@ -455,7 +454,7 @@ def client(server_ip, server_port, sock):
 
                     # sending the packets fragment_count times
                     buffer = 0
-                    defected_sent = False
+                    damaged_sent = False
                     while buffer < int(fragment_count):
 
                         # calculating fragment_size for the actual packet
@@ -473,16 +472,16 @@ def client(server_ip, server_port, sock):
                                                   buffer * int(fragment_size):(buffer * int(fragment_size)) + int(
                                                       fragment_size)])
 
-                        if defected:
-                            if (buffer + 1) % 1 == 0 and defected_sent is False:
-                                defected_data = 69
-                                defected_data_bytes = defected_data.to_bytes(1, 'big')
-                                temp = header + fragment_data + defected_data_bytes
-                                defected_sent = True
+                        if damaged:
+                            if (buffer + 1) % DAMAGE_EVERY_NTH_PACKET == 0 and damaged_sent is False:
+                                damaged_data = 69
+                                damaged_date_bytes = damaged_data.to_bytes(1, 'big')
+                                temp = header + fragment_data + damaged_date_bytes
+                                damaged_sent = True
 
                             else:
                                 temp = header + fragment_data
-                                defected_sent = False
+                                damaged_sent = False
 
                         else:
                             temp = header + fragment_data
@@ -509,8 +508,8 @@ def client(server_ip, server_port, sock):
                                 # response to the sent fragment was NACK
                                 elif has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv, NACK):
                                     print_client_dat_nack_recv_success(packet_decoded_recv)
-                                    if (buffer + 1) % 1 == 0:
-                                        defected_sent = True
+                                    if (buffer + 1) % DAMAGE_EVERY_NTH_PACKET == 0:
+                                        damaged_sent = True
 
                                 # all fragments were transferred successfully
                                 if buffer == int(fragment_count):
