@@ -1,9 +1,10 @@
+import heapq
+import ipaddress
 import os
 import socket
-import heapq
-import zlib
 import threading
-import ipaddress
+import zlib
+
 from packet_printouts import *
 
 stop_sending_KPAs = threading.Event()
@@ -14,11 +15,11 @@ MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
 KPA_SENDING_FREQUENCY_IN_SECONDS = 10
-DAMAGE_EVERY_NTH_PACKET = 2
+DAMAGE_EVERY_NTH_PACKET = 1
 
 # SWITCHES
 SHOW_EACH_FRAGMENT = True
-SHOW_ADDITIONAL_FRAGMENT_INFO = False
+SHOW_ADDITIONAL_FRAGMENT_INFO = True
 DEBUG_MODE = True
 
 # PACKET TYPES
@@ -472,21 +473,14 @@ def client(server_ip, server_port, sock):
                                                   buffer * int(fragment_size):(buffer * int(fragment_size)) + int(
                                                       fragment_size)])
 
+                        temp = header + fragment_data
+                        crc = zlib.crc32(temp)
                         if damaged:
                             if (buffer + 1) % DAMAGE_EVERY_NTH_PACKET == 0 and damaged_sent is False:
-                                damaged_data = 69
-                                damaged_date_bytes = damaged_data.to_bytes(1, 'big')
-                                temp = header + fragment_data + damaged_date_bytes
+                                fragment_data = fragment_data[1:]
                                 damaged_sent = True
-
                             else:
-                                temp = header + fragment_data
                                 damaged_sent = False
-
-                        else:
-                            temp = header + fragment_data
-
-                        crc = zlib.crc32(temp)
                         packet_encoded_sent = header + crc.to_bytes(4, 'big') + fragment_data
                         packet_decoded_sent = decode_data(packet_encoded_sent)
 
