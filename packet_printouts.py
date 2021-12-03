@@ -14,8 +14,8 @@ def print_server_expects(fragment_count, received_data):
 def print_server_inf_recv_success(received_data):
     if SHOW_EACH_FRAGMENT:
         print("[ ] The information message was received from the client")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(received_data)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(received_data)
 
 
 def print_server_packet_recv_fail(e):
@@ -26,8 +26,8 @@ def print_server_packet_recv_fail(e):
 def print_server_inf_ack_send_success(inf_ack_packet_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK has been sent to the client for the information message")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(inf_ack_packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(inf_ack_packet_decoded)
 
 
 def print_server_inf_ack_send_fail(e):
@@ -41,8 +41,8 @@ def print_server_dat_recv_success(received_fragment):
     if SHOW_EACH_FRAGMENT:
         print("[ ] Packet no. %d (%d bytes) was received" % (
             received_fragment['sequence_number'], received_fragment['fragment_size'] + CUSTOM_HEADER_SIZE_IN_BYTES))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(received_fragment)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(received_fragment)
 
 
 def print_server_dat_recv_fail(buffer, e):
@@ -56,15 +56,15 @@ def print_server_dat_recv_success_crc_error(received_fragment):
     if SHOW_EACH_FRAGMENT:
         print("[!] Packet no. %d (%d bytes) was received >>> INVALID CRC <<<" % (
             (received_fragment['sequence_number']), received_fragment['fragment_size'] + CUSTOM_HEADER_SIZE_IN_BYTES))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(received_fragment)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(received_fragment)
 
 
 def print_server_dat_ack_send_success(packet_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK for Packet no. %d has been sent" % (packet_decoded['sequence_number']))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded)
 
 
 def print_server_dat_ack_send_fail(e, packet_decoded):
@@ -78,8 +78,8 @@ def print_server_dat_nack_send_success(packet_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[√] NACK for Packet no. %d has been sent" % (
             packet_decoded['sequence_number']))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded)
 
 
 def print_server_dat_nack_send_fail(e, packet_encoded):
@@ -94,8 +94,8 @@ def print_server_dat_nack_send_fail(e, packet_encoded):
 def print_server_kpa_recv_success(received_data):
     if SHOW_EACH_FRAGMENT:
         print("[ ] Keep Alive message was received")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(received_data)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(received_data)
 
 
 def print_server_timeout():
@@ -106,8 +106,8 @@ def print_server_timeout():
 def print_server_kpa_ack_send_success(packet_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK has been sent for the Keep Alive message")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded)
 
 
 def print_server_kpa_ack_send_fail(e):
@@ -123,8 +123,8 @@ def print_server_kpa_ack_send_fail(e):
 def print_client_inf_send_success(packet_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[ ] The information message has been sent to the server")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded)
 
 
 def print_client_inf_send_fail(e):
@@ -137,8 +137,8 @@ def print_client_inf_send_fail(e):
 def print_client_inf_ack_recv_success(packet_decoded_recv):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK was received for the information message from the server")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded_recv)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded_recv)
 
 
 def print_client_inf_response_recv_fail(e):
@@ -153,8 +153,8 @@ def print_client_dat_send_success(packet_decoded):
         print("[ ] Packet no. %d (%d bytes) has been sent" % (
             packet_decoded['sequence_number'],
             packet_decoded['fragment_size'] + CUSTOM_HEADER_SIZE_IN_BYTES))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded)
 
 
 def print_client_dat_send_fail(e, packet_decoded):
@@ -172,16 +172,16 @@ def print_client_dat_ack_recv_success(packet_decoded_recv):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK for the Packet no. %d was received" % (
             packet_decoded_recv['sequence_number']))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded_recv)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded_recv)
 
 
 def print_client_dat_nack_recv_success(packet_decoded_recv):
     if SHOW_EACH_FRAGMENT:
         print("[!] NACK for the Packet no. %d was received" % (
             packet_decoded_recv['sequence_number']))
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(packet_decoded_recv)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(packet_decoded_recv)
 
 
 def print_client_dat_response_recv_fail(buffer, e):
@@ -194,8 +194,8 @@ def print_client_dat_response_recv_fail(buffer, e):
 def print_client_kpa_send_success(kpa_message_decoded):
     if SHOW_EACH_FRAGMENT:
         print("[ ] Keep Alive message has been sent")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(kpa_message_decoded)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(kpa_message_decoded)
 
 
 def print_client_kpa_send_fail(e):
@@ -208,8 +208,8 @@ def print_client_kpa_send_fail(e):
 def print_client_kpa_ack_recv_success(decoded_data):
     if SHOW_EACH_FRAGMENT:
         print("[√] ACK was received for the Keep Alive message")
-        if SHOW_ADDITIONAL_FRAGMENT_INFO:
-            print(decoded_data)
+    if SHOW_ADDITIONAL_FRAGMENT_INFO:
+        print(decoded_data)
 
 
 def print_client_kpa_ack_recv_fail(e):

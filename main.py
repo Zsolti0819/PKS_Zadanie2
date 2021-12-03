@@ -1,5 +1,6 @@
 import heapq
 import ipaddress
+import math
 import os
 import socket
 import threading
@@ -18,7 +19,7 @@ KPA_SENDING_FREQUENCY_IN_SECONDS = 10
 DAMAGE_EVERY_NTH_PACKET = 1
 
 # SWITCHES
-SHOW_EACH_FRAGMENT = True
+SHOW_EACH_FRAGMENT = False
 SHOW_ADDITIONAL_FRAGMENT_INFO = True
 DEBUG_MODE = True
 
@@ -91,13 +92,13 @@ def set_fragment_size():
 
 
 def calculate_fragment_count(file_size, fragment_size):
-    fragment_count = 1
+
     if int(file_size) > int(fragment_size):
         fragment_count = int(file_size) / int(fragment_size)
-        if int(file_size) % int(fragment_size) != 0:
-            fragment_count += 1
+    else:
+        fragment_count = 1
 
-    return fragment_count
+    return math.ceil(fragment_count)
 
 
 def calculate_data_length(buffer, file_size, fragment_size):
@@ -105,6 +106,10 @@ def calculate_data_length(buffer, file_size, fragment_size):
         data_length = fragment_size
     else:
         data_length = int(fragment_size) - ((int(fragment_size) * (buffer + 1)) - file_size)
+
+    if data_length < 0:
+        data_length = 0
+
     return data_length
 
 
@@ -176,8 +181,11 @@ def configure_server():
 
 def server(sock, path):
     received_message = []
+    received_file_name = []
     heapq.heapify(received_message)
+    heapq.heapify(received_file_name)
     final_message = ""
+    final_file_name = ""
 
     while True:
 
@@ -195,6 +203,7 @@ def server(sock, path):
 
                 type_of_message = str(received_data['data'], 'utf-8')
                 fragment_count = received_data['fragment_count']
+                additional_packets = received_data['sequence_number']
 
                 # create the ACK for the INF packet
                 header = create_custom_header(received_data['sequence_number'], received_data['fragment_count'],
@@ -224,11 +233,17 @@ def server(sock, path):
                                 if received_fragment['crc'] == zlib.crc32(data_without_crc):
                                     print_server_dat_recv_success(received_fragment)
 
-                                    heapq.heappush(received_message,
-                                                   (received_fragment['sequence_number'], received_fragment['data']))
+                                    if buffer < additional_packets:
+                                        heapq.heappush(received_file_name, (
+                                        received_fragment['sequence_number'], received_fragment['data']))
+                                        final_file_name += heapq.heappop(received_file_name)[1].decode('utf-8')
 
-                                    if type_of_message == "<text>":
-                                        final_message += heapq.heappop(received_message)[1].decode('utf-8')
+                                    else:
+                                        heapq.heappush(received_message, (received_fragment['sequence_number'] - additional_packets,
+                                        received_fragment['data']))
+
+                                        if type_of_message == "T":
+                                            final_message += heapq.heappop(received_message)[1].decode('utf-8')
 
                                     # sending ACK for the fragment
                                     header = create_custom_header(received_fragment['sequence_number'],
@@ -272,16 +287,16 @@ def server(sock, path):
                             print_server_dat_recv_fail(buffer, e)
                             return 0
 
-                    if type_of_message == "<text>":
+                    if type_of_message == "t":
                         print("[i] Received message from %s: '%s'" % (addr[0], final_message))
 
                     else:
-                        with open(os.path.join(path, type_of_message), 'wb') as file:
+                        with open(os.path.join(path, final_file_name), 'wb') as file:
                             while received_message:
                                 file.write(heapq.heappop(received_message)[1])
 
                         print("[i] Received file from %s: '%s' has been saved under directory %s" % (
-                            addr[0], type_of_message, path))
+                            addr[0], final_file_name, path))
 
                     sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
@@ -367,11 +382,14 @@ def configure_client():
 def client(server_ip, server_port, sock):
     fragment_size = 0
     message = ""
-    file_size = 0
     file_name = ""
+    file_size = 0
+    inf_data = ""
     damaged = False
     packet_type = 0
     byte_array = bytearray()
+    additional_size = 0
+    additional_packets = 0
 
     try:
         action = int(input("Choose from the options:\n"
@@ -388,7 +406,7 @@ def client(server_ip, server_port, sock):
             fragment_size = set_fragment_size()
             message = input("Enter a text message\n")
             file_size = len(message)
-            file_name = "<text>"
+            inf_data = "T"
             if int(action) == 1:
                 damaged = False
             elif int(action) == 2:
@@ -399,9 +417,13 @@ def client(server_ip, server_port, sock):
             fragment_size = set_fragment_size()
             while True:
                 try:
+                    inf_data = "F"
                     path_and_file_name = input("Enter the file name (enter the full path):\n")
                     file_name = os.path.basename(path_and_file_name)
+                    additional_size = len(file_name)
+                    additional_packets = calculate_fragment_count(additional_size, fragment_size)
                     file_size = os.path.getsize(path_and_file_name)
+
 
                     with open(path_and_file_name, "rb") as file:
                         while True:
@@ -429,13 +451,13 @@ def client(server_ip, server_port, sock):
         stop_sending_KPAs.set()
 
         # calculate fragment count
-        fragment_count = calculate_fragment_count(file_size, fragment_size)
+        fragment_count = calculate_fragment_count(file_size, fragment_size) + additional_packets
 
         # creating the INF packet
-        header = create_custom_header(file_size, int(fragment_count), int(fragment_size), INF)
-        temp = header + file_name.encode(encoding='utf-8')
+        header = create_custom_header(int(additional_packets), int(fragment_count), int(fragment_size), INF)
+        temp = header + inf_data.encode(encoding='utf-8')
         crc = zlib.crc32(temp)
-        packet_encoded_sent = header + crc.to_bytes(4, 'big') + file_name.encode(encoding='utf-8')
+        packet_encoded_sent = header + crc.to_bytes(4, 'big') + inf_data.encode(encoding='utf-8')
         packet_decoded_sent = decode_data(packet_encoded_sent)
 
         # sending the INF packet
@@ -458,20 +480,27 @@ def client(server_ip, server_port, sock):
                     damaged_sent = False
                     while buffer < int(fragment_count):
 
-                        # calculating fragment_size for the actual packet
-                        data_length = calculate_data_length(buffer, file_size, fragment_size)
-
-                        header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
-
-                        if file_name == "<text>":
-                            fragment_data = bytes(
-                                message[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)],
-                                'utf-8')
+                        if buffer < int(additional_packets):
+                            data_length = calculate_data_length(buffer, additional_size, fragment_size)
+                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),
+                                                          packet_type)
+                            fragment_data = bytes(file_name[
+                                                  buffer * int(fragment_size):(buffer * int(fragment_size)) + int(
+                                                      fragment_size)], 'utf-8')
 
                         else:
-                            fragment_data = bytes(byte_array[
-                                                  buffer * int(fragment_size):(buffer * int(fragment_size)) + int(
-                                                      fragment_size)])
+
+                            data_length = calculate_data_length((buffer - int(additional_packets)), file_size,
+                                                                fragment_size)
+
+                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),
+                                                          packet_type)
+
+                            if inf_data == "T":
+                                fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)], 'utf-8')
+
+                            else:
+                                fragment_data = bytes(byte_array[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)])
 
                         temp = header + fragment_data
                         crc = zlib.crc32(temp)
@@ -507,7 +536,7 @@ def client(server_ip, server_port, sock):
 
                                 # all fragments were transferred successfully
                                 if buffer == int(fragment_count):
-                                    if file_name == "<text>":
+                                    if inf_data == "T":
                                         print("[i] The message '%s' has been sent successfully" % message)
 
                                     else:
