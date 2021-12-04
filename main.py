@@ -20,8 +20,8 @@ DAMAGE_EVERY_NTH_PACKET = 1
 
 # SWITCHES
 SHOW_EACH_FRAGMENT = False
-SHOW_ADDITIONAL_FRAGMENT_INFO = True
-DEBUG_MODE = True
+SHOW_ALL_ATTRIBUTES = True
+DEBUG_MODE = False
 
 # PACKET TYPES
 INF = 0
@@ -140,7 +140,7 @@ def server_logout(sock):
         try:
             user_input = int(input())
             if int(user_input) == 0:
-                print("[i] Logging out, closing the socket...")
+                print("Logging out, closing the socket...")
                 stop_receiving_KPAs.set()
                 sock.close()
                 break
@@ -185,7 +185,7 @@ def server(sock, path):
 
     while True:
 
-        print(">>> The server is live and ready to receive data <<<\n(0) - Log out (Will close the socket)")
+        print("(0) - Log out (Will close the socket)")
 
         # receive INF or KPA
         try:
@@ -275,14 +275,14 @@ def server(sock, path):
                             return 0
 
                     if type_of_message == "T":
-                        print("[i] Received message from %s: '%s'" % (addr[0], final_message))
+                        print(">>> Received message from %s: '%s' <<<" % (addr[0], final_message))
 
                     else:
                         with open(os.path.join(path, final_file_name), 'wb') as file:
                             while received_message:
                                 file.write(heapq.heappop(received_message)[1])
 
-                        print("[i] Received file from %s: '%s' has been saved under directory %s" % (addr[0], final_file_name, path))
+                        print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (addr[0], final_file_name, path))
 
                     sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
@@ -359,7 +359,6 @@ def configure_client():
             sock.close()
             return
         if buffer == 1:
-            print(">>> Starting Keep Alive in the background <<<\n")
             stop_sending_KPAs.clear()
             keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
             keep_alive_thread.start()
@@ -514,10 +513,10 @@ def client(server_ip, server_port, sock):
                                 # all fragments were transferred successfully
                                 if buffer == int(fragment_count):
                                     if inf_data == "T":
-                                        print("[i] The message '%s' has been sent successfully" % message)
+                                        print(">>> The message '%s' has been sent successfully <<<" % message)
 
                                     else:
-                                        print("[i] The file '%s' has been sent successfully" % file_name)
+                                        print(">>> The file '%s' has been sent successfully <<<" % file_name)
 
                             # if receiving the response for the DAT fragment failed somehow
                             except socket.error as e:
