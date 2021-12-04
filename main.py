@@ -20,7 +20,7 @@ DAMAGE_EVERY_NTH_PACKET = 1
 
 # SWITCHES
 SHOW_EACH_FRAGMENT = False
-SHOW_ALL_ATTRIBUTES = True
+SHOW_ALL_ATTRIBUTES = False
 DEBUG_MODE = False
 
 # PACKET TYPES
@@ -30,6 +30,10 @@ NACK = 2
 DAT = 3
 KPA = 4
 FIN = 5
+
+# BUFFERS
+server_started = False
+client_logged_out = False
 
 
 def validate_ip_address(address):
@@ -81,7 +85,9 @@ def set_fragment_size():
             while int(fragment_size) < 1 or int(fragment_size) > MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES:
 
                 try:
-                    fragment_size = int(input("[!] You have entered an invalid size. The max fragment size is %d. Please enter the fragment size again:\n" % (MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
+                    fragment_size = int(input(
+                        "[!] You have entered an invalid size. The max fragment size is %d. Please enter the fragment size again:\n" % (
+                                MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
                 except ValueError:
                     print("Please enter numbers only.")
 
@@ -120,7 +126,9 @@ def create_custom_header(sequence_number, fragment_count, fragment_size, packet_
 
 
 def has_the_same_header_except_flag(sent_packet, received_packet, flag):
-    if received_packet['sequence_number'] == sent_packet['sequence_number'] and received_packet['fragment_count'] == sent_packet['fragment_count'] and received_packet['fragment_size'] == sent_packet['fragment_size'] and received_packet['packet_type'] == flag:
+    if received_packet['sequence_number'] == sent_packet['sequence_number'] and received_packet['fragment_count'] == \
+            sent_packet['fragment_count'] and received_packet['fragment_size'] == sent_packet['fragment_size'] and \
+            received_packet['packet_type'] == flag:
         return True
     return False
 
@@ -135,14 +143,13 @@ def decode_data(data):
     return parsed_data
 
 
-def server_logout(sock):
+def server_logout():
     while True:
         try:
             user_input = int(input())
             if int(user_input) == 0:
-                print("Logging out, closing the socket...")
+                print("Logging out...")
                 stop_receiving_KPAs.set()
-                sock.close()
                 break
             else:
                 print("Please enter 0 to close the socket.")
@@ -152,6 +159,7 @@ def server_logout(sock):
 
 def configure_server():
     print(">>> SERVER <<<\n")
+    global server_started
 
     server_ip = input_IP()
     server_port = input_port()
@@ -164,28 +172,42 @@ def configure_server():
     # bind IP address
     sock.bind((server_ip, int(server_port)))
 
-    server_input_thread = threading.Thread(target=server_logout, args=(sock,))
-    server_input_thread.start()
+    server_input_thread = threading.Thread(target=server_logout)
+    # server_input_thread = threading.Thread(target=server_logout, args=(sock,))
+    # server_input_thread.start()
 
     while True:
-        buffer = server(sock, path)
+        buffer = server(sock, path, server_input_thread)
         if buffer == 0:
+            if server_input_thread.is_alive():
+                server_input_thread.join()
             stop_receiving_KPAs.clear()
-            server_input_thread.join()
+            server_started = False
             return
 
 
-def server(sock, path):
+def server(sock, path, server_input_thread):
     received_message = []
     received_file_name = []
     heapq.heapify(received_message)
     heapq.heapify(received_file_name)
     final_message = ""
     final_file_name = ""
+    global server_started
 
     while True:
 
-        print("(0) - Log out (Will close the socket)")
+        if not server_started:
+            action = input("(0) - Log out\n"
+                           "(1) - Start the server\n")
+            if int(action) == 0:
+                return 0
+            else:
+                server_started = True
+                server_input_thread.start()
+                print(">>> Server is started <<<")
+        else:
+            print("(0) - Log out")
 
         # receive INF or KPA
         try:
@@ -201,7 +223,8 @@ def server(sock, path):
                 additional_packets = received_data['sequence_number']
 
                 # create the ACK for the INF packet
-                header = create_custom_header(received_data['sequence_number'], received_data['fragment_count'], received_data['fragment_size'], ACK)
+                header = create_custom_header(received_data['sequence_number'], received_data['fragment_count'],
+                                              received_data['fragment_size'], ACK)
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big') + received_data['data']
                 packet_decoded = decode_data(packet_encoded)
@@ -220,24 +243,30 @@ def server(sock, path):
                             received_fragment = decode_data(data)
                             data_without_crc = data[:9] + data[13:]
 
-                            if received_fragment['packet_type'] == DAT and received_fragment['sequence_number'] == buffer + 1:
+                            if received_fragment['packet_type'] == DAT and received_fragment[
+                                'sequence_number'] == buffer + 1:
 
                                 # crc is valid
                                 if received_fragment['crc'] == zlib.crc32(data_without_crc):
                                     print_server_dat_recv_success(received_fragment)
 
                                     if buffer < additional_packets:
-                                        heapq.heappush(received_file_name, (received_fragment['sequence_number'], received_fragment['data']))
+                                        heapq.heappush(received_file_name, (
+                                            received_fragment['sequence_number'], received_fragment['data']))
                                         final_file_name += heapq.heappop(received_file_name)[1].decode('utf-8')
 
                                     else:
-                                        heapq.heappush(received_message, (received_fragment['sequence_number'] - additional_packets, received_fragment['data']))
+                                        heapq.heappush(received_message, (
+                                            received_fragment['sequence_number'] - additional_packets,
+                                            received_fragment['data']))
 
                                         if type_of_message == "T":
                                             final_message += heapq.heappop(received_message)[1].decode('utf-8')
 
                                     # sending ACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'], received_fragment['fragment_count'], received_fragment['fragment_size'], ACK)
+                                    header = create_custom_header(received_fragment['sequence_number'],
+                                                                  received_fragment['fragment_count'],
+                                                                  received_fragment['fragment_size'], ACK)
                                     crc = 0
                                     packet_encoded = header + crc.to_bytes(4, 'big')
                                     packet_decoded = decode_data(packet_encoded)
@@ -255,7 +284,9 @@ def server(sock, path):
                                     print_server_dat_recv_success_crc_error(received_fragment)
 
                                     # sending NACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'], received_fragment['fragment_count'], received_fragment['fragment_size'], NACK)
+                                    header = create_custom_header(received_fragment['sequence_number'],
+                                                                  received_fragment['fragment_count'],
+                                                                  received_fragment['fragment_size'], NACK)
                                     crc = 0
                                     packet_encoded = header + crc.to_bytes(4, 'big')
                                     packet_decoded = decode_data(packet_encoded)
@@ -282,7 +313,8 @@ def server(sock, path):
                             while received_message:
                                 file.write(heapq.heappop(received_message)[1])
 
-                        print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (addr[0], final_file_name, path))
+                        print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (
+                            addr[0], final_file_name, path))
 
                     sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
@@ -294,19 +326,32 @@ def server(sock, path):
             # sending ACK for the Keep Alive message
             if received_data['packet_type'] == KPA:
                 print_server_kpa_recv_success(received_data)
-                header = create_custom_header(0, 0, 0, ACK)
+                if stop_receiving_KPAs.is_set():
+                    header = create_custom_header(0, 0, 0, FIN)
+                else:
+                    header = create_custom_header(0, 0, 0, ACK)
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big')
                 packet_decoded = decode_data(packet_encoded)
 
                 try:
                     sock.sendto(packet_encoded, (addr[0], addr[1]))
-                    print_server_kpa_ack_send_success(packet_decoded)
-                    return 1
+                    if stop_receiving_KPAs.is_set():
+                        print_server_kpa_fin_send_success(packet_decoded)
+                        sock.close()
+                        return 0
+                    else:
+                        print_server_kpa_ack_send_success(packet_decoded)
+                        return 1
 
                 except socket.error as e:
-                    print_server_kpa_ack_send_fail(e)
+                    print_server_kpa_response_send_fail(e)
                     return 0
+
+            # receiving FIN, closing the socket
+            if received_data['packet_type'] == FIN:
+                print_server_fin_recv_success(received_data)
+                return 0
 
         except socket.timeout:
             print_server_timeout()
@@ -317,23 +362,35 @@ def server(sock, path):
 
 
 def client_keep_alive(server_ip, server_port, sock):
-    while not stop_sending_KPAs.is_set():
+    while True:
         event_timer = stop_sending_KPAs.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
         if not event_timer:
-            kpa_header = create_custom_header(0, 0, 0, KPA)
+            if not client_logged_out:
+                header = create_custom_header(0, 0, 0, KPA)
+            else:
+                header = create_custom_header(0, 0, 0, FIN)
             crc = 0
-            kpa_message = kpa_header + crc.to_bytes(4, 'big')
-            kpa_message_decoded = decode_data(kpa_message)
+            message = header + crc.to_bytes(4, 'big')
+            message_decoded = decode_data(message)
             try:
-                sock.sendto(kpa_message, (server_ip, int(server_port)))
-                print_client_kpa_send_success(kpa_message_decoded)
+                sock.sendto(message, (server_ip, int(server_port)))
+                print_client_kpa_send_success(message_decoded)
+                if client_logged_out:
+                    sock.close()
+                    return
                 sock.settimeout(TIMEOUT_IN_SECONDS)
                 try:
                     data, addr = sock.recvfrom(MAX_DATA_SIZE_IN_BYTES)
                     decoded_data = decode_data(data)
-                    print_client_kpa_ack_recv_success(decoded_data)
+                    if decoded_data['packet_type'] == ACK:
+                        print_client_kpa_ack_recv_success(decoded_data)
+                    elif decoded_data['packet_type'] == FIN:
+                        print_client_kpa_fin_recv_success(decoded_data)
+                        stop_sending_KPAs.set()
+                        sock.close()
+                        return
                 except socket.error as e:
-                    print_client_kpa_ack_recv_fail(e)
+                    print_client_kpa_response_recv_fail(e)
                     stop_sending_KPAs.set()
                     sock.close()
 
@@ -345,26 +402,27 @@ def client_keep_alive(server_ip, server_port, sock):
 
 def configure_client():
     print(">>> CLIENT <<<\n")
-
     server_ip = input_IP()
     server_port = input_port()
+    global client_logged_out
 
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
+    keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
+
     while True:
-        buffer = client(server_ip, server_port, sock)
+        buffer = client(server_ip, server_port, sock, keep_alive_thread)
         if buffer == 0:
-            stop_sending_KPAs.set()
-            sock.close()
+            client_logged_out = False
             return
         if buffer == 1:
             stop_sending_KPAs.clear()
-            keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
             keep_alive_thread.start()
 
 
-def client(server_ip, server_port, sock):
+def client(server_ip, server_port, sock, keep_alive_thread):
+    global client_logged_out
     fragment_size = 0
     message = ""
     file_name = ""
@@ -385,6 +443,10 @@ def client(server_ip, server_port, sock):
                            "(4) - Simulation of a file transfer error\n"))
 
         if int(action) == 0:
+            print("Logging out...")
+            client_logged_out = True
+            if keep_alive_thread.is_alive():
+                keep_alive_thread.join()
             return 0
 
         elif int(action) == 1 or int(action) == 2:
@@ -455,7 +517,8 @@ def client(server_ip, server_port, sock):
                 packet_decoded_recv = decode_data(data)
 
                 # the response was ACK and the received frame had the same content
-                if has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv, ACK) and packet_decoded_sent['data'] == packet_decoded_recv['data']:
+                if has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv, ACK) and \
+                        packet_decoded_sent['data'] == packet_decoded_recv['data']:
                     print_client_inf_ack_recv_success(packet_decoded_recv)
 
                     # sending the packets fragment_count times
@@ -465,18 +528,30 @@ def client(server_ip, server_port, sock):
 
                         if buffer < int(additional_packets):
                             data_length = calculate_data_length(buffer, additional_size, fragment_size)
-                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
-                            fragment_data = bytes(file_name[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)], 'utf-8')
+                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),
+                                                          packet_type)
+                            fragment_data = bytes(file_name[
+                                                  buffer * int(fragment_size):(buffer * int(fragment_size)) + int(
+                                                      fragment_size)], 'utf-8')
 
                         else:
-                            data_length = calculate_data_length((buffer - int(additional_packets)), file_size, fragment_size)
-                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
+                            data_length = calculate_data_length((buffer - int(additional_packets)), file_size,
+                                                                fragment_size)
+                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),
+                                                          packet_type)
 
                             if inf_data == "T":
-                                fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)], 'utf-8')
+                                fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((
+                                                                                                                               buffer - int(
+                                                                                                                           additional_packets)) * int(
+                                    fragment_size)) + int(fragment_size)], 'utf-8')
 
                             else:
-                                fragment_data = bytes(byte_array[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)])
+                                fragment_data = bytes(byte_array[
+                                                      (buffer - int(additional_packets)) * int(fragment_size):((
+                                                                                                                       buffer - int(
+                                                                                                                   additional_packets)) * int(
+                                                          fragment_size)) + int(fragment_size)])
 
                         temp = header + fragment_data
                         crc = zlib.crc32(temp)
@@ -551,6 +626,9 @@ def client(server_ip, server_port, sock):
 
 if __name__ == '__main__':
     stop_sending_KPAs.set()
+
+    server_started = False
+    client_logged_out = False
 
     while True:
         try:

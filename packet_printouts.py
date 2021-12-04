@@ -94,6 +94,12 @@ def print_server_kpa_recv_success(received_data):
     if SHOW_ALL_ATTRIBUTES:
         print("RECV:", packet_format(received_data))
 
+def print_server_fin_recv_success(received_data):
+    if SHOW_EACH_FRAGMENT:
+        print("[ ] Fin message was received")
+    if SHOW_ALL_ATTRIBUTES:
+        print("RECV:", packet_format(received_data))
+
 
 def print_server_timeout():
     print("[x] No packets were received from the client. The connection timed out.")
@@ -106,11 +112,18 @@ def print_server_kpa_ack_send_success(packet_decoded):
         print("SENT:", packet_format(packet_decoded))
 
 
-def print_server_kpa_ack_send_fail(e):
+def print_server_kpa_fin_send_success(packet_decoded):
+    if SHOW_EACH_FRAGMENT:
+        print("[√] FIN has been sent for the Keep Alive message")
+    if SHOW_ALL_ATTRIBUTES:
+        print("SENT:", packet_format(packet_decoded))
+
+
+def print_server_kpa_response_send_fail(e):
     if DEBUG_MODE:
-        print("[x] Failed to send ACK for the Keep Alive message.\n" + str(e))
+        print("[x] Failed to send response for the Keep Alive message.\n" + str(e))
     else:
-        print("[x] Failed to send ACK for the Keep Alive message.")
+        print("[x] Failed to send response for the Keep Alive message.")
 
 
 # CLIENT
@@ -208,7 +221,14 @@ def print_client_kpa_ack_recv_success(decoded_data):
         print("RECV:", packet_format(decoded_data))
 
 
-def print_client_kpa_ack_recv_fail(e):
+def print_client_kpa_fin_recv_success(decoded_data):
+    if SHOW_EACH_FRAGMENT:
+        print("[√] FIN was received for the Keep Alive message")
+    if SHOW_ALL_ATTRIBUTES:
+        print("RECV:", packet_format(decoded_data))
+
+
+def print_client_kpa_response_recv_fail(e):
     if DEBUG_MODE:
         print("[x] ACK was NOT received for the Keep Alive message. Closing the socket.\n" + str(e))
     else:
