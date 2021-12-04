@@ -29,6 +29,7 @@ ACK = 1
 NACK = 2
 DAT = 3
 KPA = 4
+FIN = 5
 
 
 def validate_ip_address(address):
