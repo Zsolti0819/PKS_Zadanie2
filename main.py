@@ -21,7 +21,7 @@ DAMAGE_EVERY_NTH_PACKET = 1
 # SWITCHES
 SHOW_ATTRIBUTES = True
 SHOW_RAW_DATA = True
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 # PACKET TYPES
 INF = 0
@@ -169,13 +169,17 @@ def configure_server():
     server_ip = input_IP()
     server_port = input_port()
 
-    path = create_directory()
-
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
     # bind IP address
-    sock.bind((server_ip, int(server_port)))
+    try:
+        sock.bind((server_ip, int(server_port)))
+    except OSError:
+        print("Server is currently logged in.")
+        return
+
+    path = create_directory()
 
     server_input_thread = threading.Thread(target=server_logout)
 
@@ -283,6 +287,7 @@ def server(sock, path, server_input_thread):
 
                                 # crc is NOT valid
                                 elif received_fragment['crc'] != zlib.crc32(data_without_crc):
+                                    print(">>> INVALID CRC <<<")
                                     print_server_dat_recv_success_crc_error(received_fragment)
 
                                     # sending NACK for the fragment
