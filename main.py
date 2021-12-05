@@ -221,7 +221,6 @@ def server(sock, path, server_input_thread):
             data, addr = sock.recvfrom(MAX_DATA_SIZE_IN_BYTES)
             received_data = decode_data(data)
 
-            # sending ACK for the informational message
             if received_data['packet_type'] == INF:
                 print_server_inf_recv_success(received_data)
 
@@ -230,11 +229,12 @@ def server(sock, path, server_input_thread):
                 additional_packets = received_data['sequence_number']
 
                 # create the ACK for the INF packet
-                header = create_custom_header(received_data['sequence_number'], received_data['fragment_count'],
-                                              received_data['fragment_size'], ACK)
+                header = create_custom_header(received_data['sequence_number'], received_data['fragment_count'], received_data['fragment_size'], ACK)
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big') + received_data['data']
                 packet_decoded = decode_data(packet_encoded)
+
+                # optional printout
                 print_server_expects(fragment_count, received_data)
 
                 # sending the ACK for the INF packet
@@ -330,7 +330,6 @@ def server(sock, path, server_input_thread):
                     print_server_inf_ack_send_fail(e)
                     return 0
 
-            # sending ACK for the Keep Alive message
             if received_data['packet_type'] == KPA:
                 print_server_kpa_recv_success(received_data)
                 if stop_receiving_KPAs.is_set():
@@ -355,7 +354,6 @@ def server(sock, path, server_input_thread):
                     print_server_kpa_response_send_fail(e)
                     return 0
 
-            # receiving FIN, closing the socket
             if received_data['packet_type'] == FIN:
                 print_server_fin_recv_success(received_data)
                 return 0
