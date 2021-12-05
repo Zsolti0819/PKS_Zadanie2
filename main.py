@@ -19,8 +19,8 @@ KPA_SENDING_FREQUENCY_IN_SECONDS = 10
 DAMAGE_EVERY_NTH_PACKET = 1
 
 # SWITCHES
-SHOW_EACH_FRAGMENT = False
-SHOW_ALL_ATTRIBUTES = False
+SHOW_ATTRIBUTES = True
+SHOW_RAW_DATA = True
 DEBUG_MODE = False
 
 # PACKET TYPES
@@ -68,13 +68,18 @@ def input_port():
 
 
 def create_directory():
-    path = input("Enter the name of the folder where you want to save the files:\n")
+    path = ""
     mode = 0o777
-    try:
-        os.makedirs(name=path, mode=mode, exist_ok=True)
-    except OSError as e:
-        quit("Cannot create folder " + str(e))
-    print("The files will be saved in the directory %s" % path)
+    while True:
+        try:
+            path = input("Enter the name of the folder where you want to save the files:\n")
+            os.makedirs(name=path, mode=mode, exist_ok=True)
+            print("The files will be saved in the directory %s" % path)
+            break
+        except OSError as e:
+            print("Cannot create folder " + str(e))
+            continue
+
     return path
 
 
@@ -86,8 +91,8 @@ def set_fragment_size():
 
                 try:
                     fragment_size = int(input(
-                        "[!] You have entered an invalid size. The max fragment size is %d. Please enter the fragment size again:\n" % (
-                                MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
+                        "You have entered an invalid size. The max fragment size is %d. Please enter the fragment size again:\n" % (
+                                    MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
                 except ValueError:
                     print("Please enter numbers only.")
 
@@ -134,13 +139,13 @@ def has_the_same_header_except_flag(sent_packet, received_packet, flag):
 
 
 def decode_data(data):
-    parsed_data = {'sequence_number': int.from_bytes(data[0:3], 'big'),
-                   'fragment_count': int.from_bytes(data[3:6], 'big'),
-                   'fragment_size': int.from_bytes(data[6:8], 'big'),
-                   'packet_type': int.from_bytes(data[8:9], 'big'),
-                   'crc': int.from_bytes(data[9:13], 'big'),
-                   'data': data[13:], }
-    return parsed_data
+    decoded_data = {'sequence_number': int.from_bytes(data[0:3], 'big'),
+                    'fragment_count': int.from_bytes(data[3:6], 'big'),
+                    'fragment_size': int.from_bytes(data[6:8], 'big'),
+                    'packet_type': int.from_bytes(data[8:9], 'big'),
+                    'crc': int.from_bytes(data[9:13], 'big'),
+                    'data': data[13:], }
+    return decoded_data
 
 
 def server_logout():
@@ -173,8 +178,6 @@ def configure_server():
     sock.bind((server_ip, int(server_port)))
 
     server_input_thread = threading.Thread(target=server_logout)
-    # server_input_thread = threading.Thread(target=server_logout, args=(sock,))
-    # server_input_thread.start()
 
     while True:
         buffer = server(sock, path, server_input_thread)
@@ -187,25 +190,25 @@ def configure_server():
 
 
 def server(sock, path, server_input_thread):
+    global server_started
     received_message = []
     received_file_name = []
     heapq.heapify(received_message)
     heapq.heapify(received_file_name)
     final_message = ""
     final_file_name = ""
-    global server_started
 
     while True:
 
         if not server_started:
             action = input("(0) - Log out\n"
-                           "(1) - Start the server\n")
+                           "(1) - Start the server (You won't be able to log out till you receive the first message!)\n")
             if int(action) == 0:
                 return 0
             else:
                 server_started = True
                 server_input_thread.start()
-                print(">>> Server is started <<<")
+                print(">>> Server is running <<<")
         else:
             print("(0) - Log out")
 
@@ -243,8 +246,7 @@ def server(sock, path, server_input_thread):
                             received_fragment = decode_data(data)
                             data_without_crc = data[:9] + data[13:]
 
-                            if received_fragment['packet_type'] == DAT and received_fragment[
-                                'sequence_number'] == buffer + 1:
+                            if received_fragment['packet_type'] == DAT and received_fragment['sequence_number'] == buffer + 1:
 
                                 # crc is valid
                                 if received_fragment['crc'] == zlib.crc32(data_without_crc):
@@ -418,7 +420,8 @@ def configure_client():
             return
         if buffer == 1:
             stop_sending_KPAs.clear()
-            keep_alive_thread.start()
+            if not keep_alive_thread.is_alive():
+                keep_alive_thread.start()
 
 
 def client(server_ip, server_port, sock, keep_alive_thread):
@@ -535,23 +538,14 @@ def client(server_ip, server_port, sock, keep_alive_thread):
                                                       fragment_size)], 'utf-8')
 
                         else:
-                            data_length = calculate_data_length((buffer - int(additional_packets)), file_size,
-                                                                fragment_size)
-                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),
-                                                          packet_type)
+                            data_length = calculate_data_length((buffer - int(additional_packets)), file_size, fragment_size)
+                            header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
 
                             if inf_data == "T":
-                                fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((
-                                                                                                                               buffer - int(
-                                                                                                                           additional_packets)) * int(
-                                    fragment_size)) + int(fragment_size)], 'utf-8')
+                                fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)], 'utf-8')
 
                             else:
-                                fragment_data = bytes(byte_array[
-                                                      (buffer - int(additional_packets)) * int(fragment_size):((
-                                                                                                                       buffer - int(
-                                                                                                                   additional_packets)) * int(
-                                                          fragment_size)) + int(fragment_size)])
+                                fragment_data = bytes(byte_array[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)])
 
                         temp = header + fragment_data
                         crc = zlib.crc32(temp)
