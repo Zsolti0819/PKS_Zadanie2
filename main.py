@@ -355,6 +355,7 @@ def server(sock, path, server_input_thread):
 
             if received_data['packet_type'] == FIN:
                 print_server_fin_recv_success(received_data)
+                print(">>> FIN message was received from the client. Please log out to close the socket <<<\n(0) - Log out")
                 return 0
 
         except socket.timeout:
@@ -392,6 +393,7 @@ def client_keep_alive(server_ip, server_port, sock):
                         print_client_kpa_fin_recv_success(decoded_data)
                         stop_sending_KPAs.set()
                         sock.close()
+                        print(">>> FIN message was received from the server. The socket is closed. Please log out. <<<\n(0) - Log out")
                         return
                 except socket.error as e:
                     print_client_kpa_response_recv_fail(e)
