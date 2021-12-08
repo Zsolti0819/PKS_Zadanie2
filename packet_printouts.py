@@ -104,6 +104,19 @@ def print_server_kpa_response_send_fail(e):
         print("[✗] Failed to send response for the Keep Alive message.")
 
 
+def server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments):
+    print(">>> Summary <<<")
+    print("Number of received fragments: %d" % received_fragments)
+    print("Number of good fragments: %d" % good_fragments)
+    converted_good_fragment_list = [str(element) for element in list_of_good_fragments]
+    joined_good_fragment_string = ", ".join(converted_good_fragment_list)
+    print("Good fragments: %s" % joined_good_fragment_string)
+    print("Number of bad fragments: %d" % bad_fragments)
+    converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
+    joined_bad_fragment_string = ", ".join(converted_bad_fragment_list)
+    print("Bad fragments: %s\n" % joined_bad_fragment_string)
+
+
 # CLIENT
 
 

@@ -16,11 +16,11 @@ MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
 KPA_SENDING_FREQUENCY_IN_SECONDS = 10
-DAMAGE_EVERY_NTH_PACKET = 1
+DAMAGE_EVERY_NTH_PACKET = 100
 
 # SWITCHES
-SHOW_ATTRIBUTES = True
-SHOW_RAW_DATA = True
+SHOW_ATTRIBUTES = False
+SHOW_RAW_DATA = False
 DEBUG_MODE = True
 
 # PACKET TYPES
@@ -195,12 +195,6 @@ def configure_server():
 
 def server(sock, path, server_input_thread):
     global server_started
-    received_message = []
-    received_file_name = []
-    heapq.heapify(received_message)
-    heapq.heapify(received_file_name)
-    final_message = ""
-    final_file_name = ""
 
     while True:
 
@@ -215,12 +209,26 @@ def server(sock, path, server_input_thread):
                 server_input_thread.start()
                 print(">>> Server is running <<<")
 
-        # receive INF or KPA
+        # receive INF, KPA or FIN
         try:
             data, addr = sock.recvfrom(MAX_DATA_SIZE_IN_BYTES)
             received_data = decode_data(data)
 
             if received_data['packet_type'] == INF:
+
+                received_message = []
+                received_file_name = []
+                heapq.heapify(received_message)
+                heapq.heapify(received_file_name)
+                final_message = ""
+                final_file_name = ""
+
+                received_fragments = 0
+                list_of_good_fragments = []
+                good_fragments = 0
+                list_of_bad_fragments = []
+                bad_fragments = 0
+
                 print_server_inf_recv_success(received_data)
 
                 type_of_message = str(received_data['data'], 'utf-8')
@@ -250,9 +258,14 @@ def server(sock, path, server_input_thread):
                             data_without_crc = data[:9] + data[13:]
 
                             if received_fragment['packet_type'] == DAT and received_fragment['sequence_number'] == buffer + 1:
+                                received_fragments += 1
 
                                 # crc is valid
                                 if received_fragment['crc'] == zlib.crc32(data_without_crc):
+
+                                    list_of_good_fragments.insert(good_fragments, received_fragment['sequence_number'])
+                                    good_fragments += 1
+
                                     print_server_dat_recv_success(received_fragment)
 
                                     if buffer < additional_packets:
@@ -286,6 +299,10 @@ def server(sock, path, server_input_thread):
 
                                 # crc is NOT valid
                                 elif received_fragment['crc'] != zlib.crc32(data_without_crc):
+
+                                    list_of_bad_fragments.insert(bad_fragments, received_fragment['sequence_number'])
+                                    bad_fragments += 1
+
                                     print(">>> INVALID CRC <<<")
                                     print_server_dat_recv_success_crc_error(received_fragment)
 
@@ -321,6 +338,8 @@ def server(sock, path, server_input_thread):
 
                         print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (
                             addr[0], final_file_name, path))
+
+                    server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments)
 
                     sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
