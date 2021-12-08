@@ -1,4 +1,3 @@
-import heapq
 import ipaddress
 import math
 import os
@@ -8,8 +7,14 @@ import zlib
 
 from packet_printouts import *
 
-stop_sending_KPAs = threading.Event()
-stop_receiving_KPAs = threading.Event()
+# SWITCHES
+SHOW_ATTRIBUTES = True
+SHOW_RAW_DATA = True
+DEBUG_MODE = True
+
+# EVENTS
+client_FIN = threading.Event()
+server_FIN = threading.Event()
 
 # SIZES
 MAX_DATA_SIZE_IN_BYTES = 1458
@@ -17,11 +22,6 @@ CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
 KPA_SENDING_FREQUENCY_IN_SECONDS = 10
 DAMAGE_EVERY_NTH_PACKET = 100
-
-# SWITCHES
-SHOW_ATTRIBUTES = False
-SHOW_RAW_DATA = False
-DEBUG_MODE = True
 
 # PACKET TYPES
 INF = 0
@@ -91,8 +91,7 @@ def set_fragment_size():
 
                 try:
                     fragment_size = int(input(
-                        "You have entered an invalid size. Please enter a size between 1 - %d.\n" % (
-                                    MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
+                        "You have entered an invalid size. Please enter a size between 1 - %d.\n" % (MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
                 except ValueError:
                     print("Please enter numbers only.")
 
@@ -131,9 +130,7 @@ def create_custom_header(sequence_number, fragment_count, fragment_size, packet_
 
 
 def has_the_same_header_except_flag(sent_packet, received_packet, flag):
-    if received_packet['sequence_number'] == sent_packet['sequence_number'] and received_packet['fragment_count'] == \
-            sent_packet['fragment_count'] and received_packet['fragment_size'] == sent_packet['fragment_size'] and \
-            received_packet['packet_type'] == flag:
+    if received_packet['sequence_number'] == sent_packet['sequence_number'] and received_packet['fragment_count'] == sent_packet['fragment_count'] and received_packet['fragment_size'] == sent_packet['fragment_size'] and received_packet['packet_type'] == flag:
         return True
     return False
 
@@ -154,7 +151,7 @@ def server_logout():
             user_input = int(input())
             if int(user_input) == 0:
                 print("Logging out...")
-                stop_receiving_KPAs.set()
+                server_FIN.set()
                 break
             else:
                 print("Please enter 0 to close the socket.")
@@ -188,7 +185,7 @@ def configure_server():
         if buffer == 0:
             if server_input_thread.is_alive():
                 server_input_thread.join()
-            stop_receiving_KPAs.clear()
+            server_FIN.clear()
             server_started = False
             return
 
@@ -216,12 +213,8 @@ def server(sock, path, server_input_thread):
 
             if received_data['packet_type'] == INF:
 
-                received_message = []
-                received_file_name = []
-                heapq.heapify(received_message)
-                heapq.heapify(received_file_name)
-                final_message = ""
-                final_file_name = ""
+                received_message = bytearray()
+                received_file_name = bytearray()
 
                 received_fragments = 0
                 list_of_good_fragments = []
@@ -269,22 +262,13 @@ def server(sock, path, server_input_thread):
                                     print_server_dat_recv_success(received_fragment)
 
                                     if buffer < additional_packets:
-                                        heapq.heappush(received_file_name, (
-                                            received_fragment['sequence_number'], received_fragment['data']))
-                                        final_file_name += heapq.heappop(received_file_name)[1].decode('utf-8')
+                                        received_file_name += received_fragment['data']
 
                                     else:
-                                        heapq.heappush(received_message, (
-                                            received_fragment['sequence_number'] - additional_packets,
-                                            received_fragment['data']))
-
-                                        if type_of_message == "T":
-                                            final_message += heapq.heappop(received_message)[1].decode('utf-8')
+                                        received_message += received_fragment['data']
 
                                     # sending ACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'],
-                                                                  received_fragment['fragment_count'],
-                                                                  received_fragment['fragment_size'], ACK)
+                                    header = create_custom_header(received_fragment['sequence_number'], received_fragment['fragment_count'], received_fragment['fragment_size'], ACK)
                                     crc = 0
                                     packet_encoded = header + crc.to_bytes(4, 'big')
                                     packet_decoded = decode_data(packet_encoded)
@@ -303,13 +287,10 @@ def server(sock, path, server_input_thread):
                                     list_of_bad_fragments.insert(bad_fragments, received_fragment['sequence_number'])
                                     bad_fragments += 1
 
-                                    print(">>> INVALID CRC <<<")
                                     print_server_dat_recv_success_crc_error(received_fragment)
 
                                     # sending NACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'],
-                                                                  received_fragment['fragment_count'],
-                                                                  received_fragment['fragment_size'], NACK)
+                                    header = create_custom_header(received_fragment['sequence_number'], received_fragment['fragment_count'], received_fragment['fragment_size'], NACK)
                                     crc = 0
                                     packet_encoded = header + crc.to_bytes(4, 'big')
                                     packet_decoded = decode_data(packet_encoded)
@@ -329,18 +310,18 @@ def server(sock, path, server_input_thread):
                             return 0
 
                     if type_of_message == "T":
-                        print(">>> Received message from %s: '%s' <<<" % (addr[0], final_message))
+                        print(">>> Received message from %s: '%s' <<<" % (addr[0], received_message.decode('utf-8')))
 
-                    else:
-                        with open(os.path.join(path, final_file_name), 'wb') as file:
-                            while received_message:
-                                file.write(heapq.heappop(received_message)[1])
+                    elif type_of_message == "F":
+                        with open(os.path.join(path, received_file_name.decode('utf-8')), 'wb') as file:
+                            file.write(received_message)
 
-                        print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (
-                            addr[0], final_file_name, path))
+                        print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (addr[0], received_file_name.decode('utf-8'), path))
 
                     server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments)
 
+                    received_message.clear()
+                    received_file_name.clear()
                     sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
 
@@ -350,7 +331,7 @@ def server(sock, path, server_input_thread):
 
             if received_data['packet_type'] == KPA:
                 print_server_kpa_recv_success(received_data)
-                if stop_receiving_KPAs.is_set():
+                if server_FIN.is_set():
                     header = create_custom_header(0, 0, 0, FIN)
                 else:
                     header = create_custom_header(0, 0, 0, ACK)
@@ -360,7 +341,7 @@ def server(sock, path, server_input_thread):
 
                 try:
                     sock.sendto(packet_encoded, (addr[0], addr[1]))
-                    if stop_receiving_KPAs.is_set():
+                    if server_FIN.is_set():
                         print_server_kpa_fin_send_success(packet_decoded)
                         sock.close()
                         return 0
@@ -387,7 +368,7 @@ def server(sock, path, server_input_thread):
 
 def client_keep_alive(server_ip, server_port, sock):
     while True:
-        event_timer = stop_sending_KPAs.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
+        event_timer = client_FIN.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
         if not event_timer:
             if not client_logged_out:
                 header = create_custom_header(0, 0, 0, KPA)
@@ -410,18 +391,18 @@ def client_keep_alive(server_ip, server_port, sock):
                         print_client_kpa_ack_recv_success(decoded_data)
                     elif decoded_data['packet_type'] == FIN:
                         print_client_kpa_fin_recv_success(decoded_data)
-                        stop_sending_KPAs.set()
+                        client_FIN.set()
                         sock.close()
                         print(">>> FIN message was received from the server. The socket is closed. Please log out. <<<\n(0) - Log out")
                         return
                 except socket.error as e:
                     print_client_kpa_response_recv_fail(e)
-                    stop_sending_KPAs.set()
+                    client_FIN.set()
                     sock.close()
 
             except socket.error as e:
                 print_client_kpa_send_fail(e)
-                stop_sending_KPAs.set()
+                client_FIN.set()
                 sock.close()
 
 
@@ -442,7 +423,7 @@ def configure_client():
             client_logged_out = False
             return
         if buffer == 1:
-            stop_sending_KPAs.clear()
+            client_FIN.clear()
             if not keep_alive_thread.is_alive():
                 keep_alive_thread.start()
 
@@ -524,7 +505,7 @@ def client(server_ip, server_port, sock, keep_alive_thread):
                 continue
 
             # just before we send a new INF packet, we stop sending KPAs
-            stop_sending_KPAs.set()
+            client_FIN.set()
 
             # calculate fragment count
             fragment_count = calculate_fragment_count(file_size, fragment_size) + additional_packets
@@ -643,7 +624,7 @@ def client(server_ip, server_port, sock, keep_alive_thread):
 
 
 if __name__ == '__main__':
-    stop_sending_KPAs.set()
+    client_FIN.set()
 
     server_started = False
     client_logged_out = False

@@ -43,6 +43,7 @@ def print_server_dat_recv_fail(buffer, e):
 
 
 def print_server_dat_recv_success_crc_error(received_fragment):
+    print(">>> PACKET %d HAS INVALID CRC <<<" % received_fragment['sequence_number'])
     if SHOW_ATTRIBUTES:
         print("RECEIVED: [!]", packet_format(received_fragment))
 
