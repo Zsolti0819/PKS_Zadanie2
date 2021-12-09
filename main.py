@@ -7,7 +7,7 @@ import zlib
 
 # SWITCHES
 SHOW_ATTRIBUTES = True
-SHOW_RAW_DATA = False
+SHOW_RAW_DATA = True
 CLIENT_SHOW_KPAs_AND_FINs = False
 
 # EVENTS
@@ -86,7 +86,7 @@ def create_directory():
 def set_fragment_size():
     while True:
         try:
-            fragment_size = int(input("Enter the size of the fragments:\n"))
+            fragment_size = int(input("Enter the size of the fragments. 13 bytes will be automatically added to the value.\n"))
             while int(fragment_size) < 1 or int(fragment_size) > MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES:
                 try:
                     fragment_size = int(input("You have entered an invalid size. Please enter a size between 1 - %d.\n" % (MAX_DATA_SIZE_IN_BYTES - CUSTOM_HEADER_SIZE_IN_BYTES)))
@@ -236,7 +236,7 @@ def server(sock, path, server_input_thread):
         if server_first_start:
             action = input("Choose from the options:\n"
                            "(0) - Log out\n"
-                           "(1) - Start the server (You won't be able to log out till you receive the first message!)\n")
+                           "(1) - Start the server (Wait for the first message)\n")
             if int(action) == 0:
                 return 0
             else:
@@ -273,9 +273,6 @@ def server(sock, path, server_input_thread):
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big') + received_data['data']
                 packet_decoded = decode_data(packet_encoded)
-
-                # optional printout
-                print(">>> The next %d are containing the file name. Together  %d packets will be received after the information message. The message is fragmented by %d bytes. <<<" % (received_data['sequence_number'], fragment_count, received_data['fragment_size']))
 
                 # sending the ACK for the INF packet
                 try:
@@ -541,7 +538,7 @@ def client(server_ip, server_port, sock):
                     try:
                         inf_data = "F"
                         path_and_file_name = input("Enter the file name (enter the full path):\n")
-                        print("File %s will be sent to the client." % path_and_file_name)
+                        print(">>> File %s will be sent to the client. <<<" % path_and_file_name)
                         file_name = os.path.basename(path_and_file_name)
                         additional_size = len(file_name)
                         additional_packets = calculate_fragment_count(additional_size, fragment_size)
@@ -583,7 +580,7 @@ def client(server_ip, server_port, sock):
             fragment_count = calculate_fragment_count(file_size, fragment_size) + additional_packets
 
             # creating the INF packet
-            header = create_custom_header(int(additional_packets), int(fragment_count), int(fragment_size), INF)
+            header = create_custom_header(int(additional_packets), int(fragment_count), int(fragment_size) + CUSTOM_HEADER_SIZE_IN_BYTES, INF)
             temp = header + inf_data.encode(encoding='utf-8')
             crc = zlib.crc32(temp)
             packet_encoded_sent = header + crc.to_bytes(4, 'big') + inf_data.encode(encoding='utf-8')
@@ -612,12 +609,12 @@ def client(server_ip, server_port, sock):
 
                             if buffer < int(additional_packets):
                                 data_length = calculate_data_length(buffer, additional_size, fragment_size)
-                                header = create_custom_header(buffer + 1, int(fragment_count), int(data_length),packet_type)
+                                header = create_custom_header(buffer + 1, int(fragment_count), int(data_length) + CUSTOM_HEADER_SIZE_IN_BYTES, packet_type)
                                 fragment_data = bytes(file_name[buffer * int(fragment_size):(buffer * int(fragment_size)) + int(fragment_size)], 'utf-8')
 
                             else:
                                 data_length = calculate_data_length((buffer - int(additional_packets)), file_size, fragment_size)
-                                header = create_custom_header(buffer + 1, int(fragment_count), int(data_length), packet_type)
+                                header = create_custom_header(buffer + 1, int(fragment_count), int(data_length) + CUSTOM_HEADER_SIZE_IN_BYTES, packet_type)
 
                                 if inf_data == "T":
                                     fragment_data = bytes(message[(buffer - int(additional_packets)) * int(fragment_size):((buffer - int(additional_packets)) * int(fragment_size)) + int(fragment_size)], 'utf-8')
@@ -654,8 +651,7 @@ def client(server_ip, server_port, sock):
                                         buffer += 1
 
                                     # response to the sent fragment was NACK
-                                    elif has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv,
-                                                                         NACK):
+                                    elif has_the_same_header_except_flag(packet_decoded_sent, packet_decoded_recv, NACK):
                                         if SHOW_ATTRIBUTES:
                                             print("RECEIVED: [!]", packet_format(packet_decoded_recv))
                                         if (buffer + 1) % DAMAGE_EVERY_NTH_PACKET == 0:
