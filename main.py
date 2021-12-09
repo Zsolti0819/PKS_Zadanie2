@@ -9,11 +9,11 @@ from packet_printouts import *
 
 # SWITCHES
 SHOW_ATTRIBUTES = True
-SHOW_RAW_DATA = True
+SHOW_RAW_DATA = False
 DEBUG_MODE = True
 
 # EVENTS
-client_FIN = threading.Event()
+client_terminate_KPAs = threading.Event()
 server_FIN = threading.Event()
 
 # SIZES
@@ -34,6 +34,7 @@ FIN = 5
 # BUFFERS
 server_started = False
 client_logged_out = False
+client_was_logged_out = False
 
 
 def validate_ip_address(address):
@@ -367,8 +368,9 @@ def server(sock, path, server_input_thread):
 
 
 def client_keep_alive(server_ip, server_port, sock):
-    while True:
-        event_timer = client_FIN.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
+    global client_was_logged_out
+    while not client_terminate_KPAs.is_set():
+        event_timer = client_terminate_KPAs.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
         if not event_timer:
             if not client_logged_out:
                 header = create_custom_header(0, 0, 0, KPA)
@@ -381,7 +383,7 @@ def client_keep_alive(server_ip, server_port, sock):
                 sock.sendto(message, (server_ip, int(server_port)))
                 print_client_kpa_send_success(message_decoded)
                 if client_logged_out:
-                    sock.close()
+                    client_was_logged_out = True
                     return
                 sock.settimeout(TIMEOUT_IN_SECONDS)
                 try:
@@ -391,18 +393,17 @@ def client_keep_alive(server_ip, server_port, sock):
                         print_client_kpa_ack_recv_success(decoded_data)
                     elif decoded_data['packet_type'] == FIN:
                         print_client_kpa_fin_recv_success(decoded_data)
-                        client_FIN.set()
-                        sock.close()
+                        client_terminate_KPAs.set()
                         print(">>> FIN message was received from the server. The socket is closed. Please log out. <<<\n(0) - Log out")
                         return
                 except socket.error as e:
                     print_client_kpa_response_recv_fail(e)
-                    client_FIN.set()
+                    client_terminate_KPAs.set()
                     sock.close()
 
             except socket.error as e:
                 print_client_kpa_send_fail(e)
-                client_FIN.set()
+                client_terminate_KPAs.set()
                 sock.close()
 
 
@@ -415,21 +416,22 @@ def configure_client():
     # creating the socket
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-    keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
-
     while True:
-        buffer = client(server_ip, server_port, sock, keep_alive_thread)
+        buffer = client(server_ip, server_port, sock)
         if buffer == 0:
             client_logged_out = False
+            sock.close()
             return
         if buffer == 1:
-            client_FIN.clear()
-            if not keep_alive_thread.is_alive():
-                keep_alive_thread.start()
+            client_terminate_KPAs.clear()
+            keep_alive_thread = threading.Thread(target=client_keep_alive, args=(server_ip, server_port, sock))
+            keep_alive_thread.start()
+            print(threading.active_count())
 
 
-def client(server_ip, server_port, sock, keep_alive_thread):
+def client(server_ip, server_port, sock):
     global client_logged_out
+    global client_was_logged_out
     message = ""
     file_name = ""
     file_size = 0
@@ -452,8 +454,10 @@ def client(server_ip, server_port, sock, keep_alive_thread):
             if int(action) == 0:
                 print("Logging out...")
                 client_logged_out = True
-                if keep_alive_thread.is_alive():
-                    keep_alive_thread.join()
+                while True:
+                    if client_was_logged_out:
+                        break
+                client_was_logged_out = False
                 return 0
 
             elif int(action) == 1 or int(action) == 2:
@@ -505,7 +509,7 @@ def client(server_ip, server_port, sock, keep_alive_thread):
                 continue
 
             # just before we send a new INF packet, we stop sending KPAs
-            client_FIN.set()
+            client_terminate_KPAs.set()
 
             # calculate fragment count
             fragment_count = calculate_fragment_count(file_size, fragment_size) + additional_packets
@@ -624,7 +628,7 @@ def client(server_ip, server_port, sock, keep_alive_thread):
 
 
 if __name__ == '__main__':
-    client_FIN.set()
+    client_terminate_KPAs.set()
 
     server_started = False
     client_logged_out = False
