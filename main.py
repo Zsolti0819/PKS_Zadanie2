@@ -19,7 +19,7 @@ MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
 KPA_SENDING_FREQUENCY_IN_SECONDS = 10
-DAMAGE_EVERY_NTH_PACKET = 100
+DAMAGE_EVERY_NTH_PACKET = 1
 
 # PACKET TYPES
 INF = 0
@@ -167,20 +167,6 @@ def packet_format(packet):
         packet_formatted = "sequence_number %d | fragment_count %d | fragment_size %d bytes | %s | CRC %d" % (packet['sequence_number'], packet['fragment_count'], packet['fragment_size'], packet_type, packet['crc'])
 
     return packet_formatted
-
-
-def server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments):
-    print(">>> Summary <<<")
-    print("Number of received fragments: %d" % received_fragments)
-    print("Number of good fragments: %d" % good_fragments)
-    converted_good_fragment_list = [str(element) for element in list_of_good_fragments]
-    joined_good_fragment_string = ", ".join(converted_good_fragment_list)
-    print("Good fragments: %s" % joined_good_fragment_string)
-    print("Number of bad fragments: %d" % bad_fragments)
-    if bad_fragments != 0:
-        converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
-        joined_bad_fragment_string = ", ".join(converted_bad_fragment_list)
-        print("Bad fragments: %s" % joined_bad_fragment_string)
 
 
 def server_logout():
@@ -363,8 +349,9 @@ def server(sock, path, server_input_thread):
                         with open(os.path.join(path, received_file_name.decode('utf-8')), 'wb') as file:
                             file.write(received_message)
                         print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (addr[0], received_file_name.decode('utf-8'), path))
+                        print(path+"\\"+received_file_name.decode('utf-8'))
 
-                    server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments)
+                    # here
 
                     received_message.clear()
                     received_file_name.clear()
