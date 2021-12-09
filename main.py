@@ -525,12 +525,10 @@ def client(server_ip, server_port, sock):
                     try:
                         inf_data = "F"
                         path_and_file_name = input("Enter the file name (enter the full path):\n")
-                        print(">>> File %s will be sent to the client. <<<" % path_and_file_name)
                         file_name = os.path.basename(path_and_file_name)
                         additional_size = len(file_name)
                         additional_packets = calculate_fragment_count(additional_size, fragment_size)
                         file_size = os.path.getsize(path_and_file_name)
-
                         with open(path_and_file_name, "rb") as file:
                             while True:
                                 byte = file.read(1)
@@ -538,7 +536,7 @@ def client(server_ip, server_port, sock):
                                     break
                                 byte_array += byte
                         file.close()
-
+                        print(">>> File %s will be sent to the client. <<<" % path_and_file_name)
                         if int(action) == 3:
                             damaged = False
                         elif int(action) == 4:
