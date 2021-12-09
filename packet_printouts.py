@@ -1,4 +1,4 @@
-from main import DEBUG_MODE, SHOW_ATTRIBUTES, SHOW_RAW_DATA, INF, ACK, NACK, DAT, KPA, FIN
+from main import SHOW_ATTRIBUTES, DEBUG_MODE, CLIENT_SHOW_KPAs_AND_FINs, INF, ACK, NACK, DAT, KPA, FIN, SHOW_RAW_DATA
 
 
 # SERVER
@@ -112,10 +112,11 @@ def server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, l
     converted_good_fragment_list = [str(element) for element in list_of_good_fragments]
     joined_good_fragment_string = ", ".join(converted_good_fragment_list)
     print("Good fragments: %s" % joined_good_fragment_string)
-    print("Number of bad fragments: %d" % bad_fragments)
-    converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
-    joined_bad_fragment_string = ", ".join(converted_bad_fragment_list)
-    print("Bad fragments: %s\n" % joined_bad_fragment_string)
+    if bad_fragments != 0:
+        print("Number of bad fragments: %d" % bad_fragments)
+        converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
+        joined_bad_fragment_string = ", ".join(converted_bad_fragment_list)
+        print("Bad fragments: %s" % joined_bad_fragment_string)
 
 
 # CLIENT
@@ -175,8 +176,9 @@ def print_client_dat_response_recv_fail(buffer, e):
 
 
 def print_client_kpa_send_success(kpa_message_decoded):
-    if SHOW_ATTRIBUTES:
-        print("SENT    : [>]", packet_format(kpa_message_decoded))
+    if CLIENT_SHOW_KPAs_AND_FINs:
+        if SHOW_ATTRIBUTES:
+            print("SENT    : [>]", packet_format(kpa_message_decoded))
 
 
 def print_client_kpa_send_fail(e):
@@ -187,8 +189,9 @@ def print_client_kpa_send_fail(e):
 
 
 def print_client_kpa_ack_recv_success(decoded_data):
-    if SHOW_ATTRIBUTES:
-        print("RECEIVED: [✓]", packet_format(decoded_data))
+    if CLIENT_SHOW_KPAs_AND_FINs:
+        if SHOW_ATTRIBUTES:
+            print("RECEIVED: [✓]", packet_format(decoded_data))
 
 
 def print_client_kpa_fin_recv_success(decoded_data):
