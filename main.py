@@ -18,7 +18,7 @@ server_FIN = threading.Event()
 MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
-KPA_SENDING_FREQUENCY_IN_SECONDS = 10
+KPA_SENDING_FREQUENCY_IN_SECONDS = 5
 DAMAGE_EVERY_NTH_PACKET = 1
 
 # PACKET TYPES
@@ -351,7 +351,7 @@ def server(sock, path, server_input_thread):
                         print(">>> Received file from %s: '%s' has been saved under directory %s <<<" % (addr[0], received_file_name.decode('utf-8'), path))
                         print(path+"\\"+received_file_name.decode('utf-8'))
 
-                    # here
+                    server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments)
 
                     received_message.clear()
                     received_file_name.clear()
@@ -366,9 +366,9 @@ def server(sock, path, server_input_thread):
                 if SHOW_ATTRIBUTES:
                     print("RECEIVED: [✓]", packet_format(received_data))
                 if server_FIN.is_set():
-                    header = create_custom_header(0, 0, 0, FIN)
+                    header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, FIN)
                 else:
-                    header = create_custom_header(0, 0, 0, ACK)
+                    header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, ACK)
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big')
                 packet_decoded = decode_data(packet_encoded)
@@ -410,9 +410,9 @@ def client_keep_alive(server_ip, server_port, sock):
         event_timer = client_terminate_KPAs.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
         if not event_timer:
             if not client_logout:
-                header = create_custom_header(0, 0, 0, KPA)
+                header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, KPA)
             else:
-                header = create_custom_header(0, 0, 0, FIN)
+                header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, FIN)
             crc = 0
             message = header + crc.to_bytes(4, 'big')
             message_decoded = decode_data(message)
@@ -679,6 +679,21 @@ def client(server_ip, server_port, sock):
 
         except ValueError:
             print("Please enter numbers only.")
+
+
+def server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, list_of_good_fragments, received_fragments):
+    print(">>> Summary <<<")
+    print("Number of received fragments: %d + 1 (INF message)" % received_fragments)
+
+    print("Number of good fragments: %d + 1 (INF message)" % good_fragments)
+    # converted_good_fragment_list = [str(element) for element in list_of_good_fragments]
+    # joined_good_fragment_string = ", ".join(converted_good_fragment_list)
+    # print("Good fragments: %s" % joined_good_fragment_string)
+
+    print("Number of bad fragments: %d" % bad_fragments)
+    converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
+    joined_bad_fragment_string = ", ".join(converted_bad_fragment_list)
+    print("Bad fragments: %s" % joined_bad_fragment_string)
 
 
 if __name__ == '__main__':
