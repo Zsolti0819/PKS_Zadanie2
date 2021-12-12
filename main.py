@@ -17,7 +17,7 @@ server_FIN = threading.Event()
 # SIZES
 MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
-TIMEOUT_IN_SECONDS = 20
+TIMEOUT_IN_SECONDS = 10
 KPA_SENDING_FREQUENCY_IN_SECONDS = 5
 DAMAGE_EVERY_NTH_PACKET = 1
 
@@ -263,6 +263,7 @@ def server(sock, path, server_input_thread):
                 # sending the ACK for the INF packet
                 try:
                     sock.sendto(packet_encoded, (addr[0], addr[1]))
+                    sock.settimeout(TIMEOUT_IN_SECONDS)
                     if SHOW_ATTRIBUTES:
                         print("SENT    : [>]", packet_format(packet_decoded))
 
@@ -355,7 +356,7 @@ def server(sock, path, server_input_thread):
 
                     received_message.clear()
                     received_file_name.clear()
-                    sock.settimeout(TIMEOUT_IN_SECONDS)
+
                     return 1
 
                 except socket.error as e:
@@ -574,6 +575,7 @@ def client(server_ip, server_port, sock):
             # sending the INF packet
             try:
                 sock.sendto(packet_encoded_sent, (server_ip, int(server_port)))
+                sock.settimeout(TIMEOUT_IN_SECONDS)
                 if SHOW_ATTRIBUTES:
                     print("SENT    : [>]", packet_format(packet_decoded_sent))
 
