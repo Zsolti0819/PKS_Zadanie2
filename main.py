@@ -334,11 +334,11 @@ def server(sock, path, server_input_thread):
 
                             else:
                                 print("[!] Something went terribly wrong.")
-                                return 0
+                                continue
 
                         except socket.error as e:
                             print("[✗] Packet no. %d was NOT received\n" % int(buffer + 1), str(e))
-                            return 0
+                            continue
 
                     # text message
                     if type_of_message == "T":
@@ -366,9 +366,9 @@ def server(sock, path, server_input_thread):
                 if SHOW_ATTRIBUTES:
                     print("RECEIVED: [✓]", packet_format(received_data))
                 if server_FIN.is_set():
-                    header = create_custom_header(0, 0, 0, FIN)
+                    header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, FIN)
                 else:
-                    header = create_custom_header(0, 0, 0, ACK)
+                    header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, ACK)
                 crc = 0
                 packet_encoded = header + crc.to_bytes(4, 'big')
                 packet_decoded = decode_data(packet_encoded)
@@ -410,9 +410,9 @@ def client_keep_alive(server_ip, server_port, sock):
         event_timer = client_terminate_KPAs.wait(KPA_SENDING_FREQUENCY_IN_SECONDS)
         if not event_timer:
             if not client_logout:
-                header = create_custom_header(0, 0, 0, KPA)
+                header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, KPA)
             else:
-                header = create_custom_header(0, 0, 0, FIN)
+                header = create_custom_header(0, 0, CUSTOM_HEADER_SIZE_IN_BYTES, FIN)
             crc = 0
             message = header + crc.to_bytes(4, 'big')
             message_decoded = decode_data(message)
@@ -653,7 +653,8 @@ def client(server_ip, server_port, sock):
                                 # if receiving the response for the DAT fragment failed somehow
                                 except socket.error as e:
                                     print("[✗] No response was received for the Packet %d\n" % int(buffer + 1), str(e))
-                                    return 0
+                                    sock.sendto(packet_encoded_sent, (server_ip, int(server_port)))
+                                    continue
 
                             # if sending the DAT fragment failed somehow
                             except socket.error as e:
