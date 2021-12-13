@@ -7,7 +7,7 @@ import zlib
 
 # SWITCHES
 SHOW_ATTRIBUTES = True
-SHOW_RAW_DATA = True
+SHOW_RAW_DATA = False
 CLIENT_SHOW_KPAs_AND_FINs = False
 
 # EVENTS
@@ -18,7 +18,7 @@ server_FIN = threading.Event()
 MAX_DATA_SIZE_IN_BYTES = 1458
 CUSTOM_HEADER_SIZE_IN_BYTES = 13
 TIMEOUT_IN_SECONDS = 20
-KPA_SENDING_FREQUENCY_IN_SECONDS = 10
+KPA_SENDING_FREQUENCY_IN_SECONDS = 5
 DAMAGE_EVERY_NTH_PACKET = 1
 
 # PACKET TYPES
@@ -263,7 +263,6 @@ def server(sock, path, server_input_thread):
                 # sending the ACK for the INF packet
                 try:
                     sock.sendto(packet_encoded, (addr[0], addr[1]))
-                    sock.settimeout(TIMEOUT_IN_SECONDS)
                     if SHOW_ATTRIBUTES:
                         print("SENT    : [>]", packet_format(packet_decoded))
 
@@ -302,7 +301,7 @@ def server(sock, path, server_input_thread):
                                         sock.sendto(packet_encoded, (addr[0], addr[1]))
                                         if SHOW_ATTRIBUTES:
                                             print("SENT    : [>]", packet_format(packet_decoded))
-
+                                        buffer += 1
 
                                     except socket.error as e:
                                         print("[✗] Failed to send ACK for Packet no. %d " % (packet_decoded['sequence_number']) + str(e))
@@ -333,71 +332,10 @@ def server(sock, path, server_input_thread):
                                         print("[✗] Failed to send NACK for Packet no. %d " % (packet_encoded['sequence_number']) + str(e))
                                         return 0
 
-                            elif received_fragment['packet_type'] == DAT and received_fragment['sequence_number'] == buffer:
-                                # crc is valid
-                                if received_fragment['crc'] == zlib.crc32(data_without_crc):
-
-                                    list_of_good_fragments.insert(good_fragments, received_fragment['sequence_number'])
-                                    good_fragments += 1
-
-                                    if SHOW_ATTRIBUTES:
-                                        print("RECEIVED: [✓]", packet_format(received_fragment))
-
-                                    if buffer < additional_packets:
-                                        received_file_name += received_fragment['data']
-                                    else:
-                                        received_message += received_fragment['data']
-
-                                    # creating ACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'],
-                                                                  received_fragment['fragment_count'],
-                                                                  received_fragment['fragment_size'], ACK)
-                                    crc = 0
-                                    packet_encoded = header + crc.to_bytes(4, 'big')
-                                    packet_decoded = decode_data(packet_encoded)
-
-                                    try:
-                                        sock.sendto(packet_encoded, (addr[0], addr[1]))
-                                        if SHOW_ATTRIBUTES:
-                                            print("SENT    : [>]", packet_format(packet_decoded))
-                                        buffer += 1
-
-                                    except socket.error as e:
-                                        print("[✗] Failed to send ACK for Packet no. %d " % (
-                                        packet_decoded['sequence_number']) + str(e))
-                                        return 0
-
-                                # crc is NOT valid
-                                elif received_fragment['crc'] != zlib.crc32(data_without_crc):
-
-                                    list_of_bad_fragments.insert(bad_fragments, received_fragment['sequence_number'])
-                                    bad_fragments += 1
-
-                                    print(">>> PACKET %d HAS INVALID CRC <<<" % received_fragment['sequence_number'])
-                                    if SHOW_ATTRIBUTES:
-                                        print("RECEIVED: [!]", packet_format(received_fragment))
-
-                                    # sending NACK for the fragment
-                                    header = create_custom_header(received_fragment['sequence_number'],
-                                                                  received_fragment['fragment_count'],
-                                                                  received_fragment['fragment_size'], NACK)
-                                    crc = 0
-                                    packet_encoded = header + crc.to_bytes(4, 'big')
-                                    packet_decoded = decode_data(packet_encoded)
-
-                                    try:
-                                        sock.sendto(packet_encoded, (addr[0], addr[1]))
-                                        if SHOW_ATTRIBUTES:
-                                            print("SENT    : [>]", packet_format(packet_decoded))
-
-                                    except socket.error as e:
-                                        print("[✗] Failed to send NACK for Packet no. %d " % (
-                                        packet_encoded['sequence_number']) + str(e))
-                                        return 0
-
                             else:
                                 print("[!] Something went terribly wrong.")
-                                continue
+                                print(received_fragment)
+                                return 0
 
                         except socket.error as e:
                             print("[✗] Packet no. %d was NOT received\n" % int(buffer + 1), str(e))
@@ -418,7 +356,7 @@ def server(sock, path, server_input_thread):
 
                     received_message.clear()
                     received_file_name.clear()
-
+                    sock.settimeout(TIMEOUT_IN_SECONDS)
                     return 1
 
                 except socket.error as e:
@@ -637,7 +575,6 @@ def client(server_ip, server_port, sock):
             # sending the INF packet
             try:
                 sock.sendto(packet_encoded_sent, (server_ip, int(server_port)))
-                sock.settimeout(TIMEOUT_IN_SECONDS)
                 if SHOW_ATTRIBUTES:
                     print("SENT    : [>]", packet_format(packet_decoded_sent))
 
@@ -749,7 +686,6 @@ def client(server_ip, server_port, sock):
 def server_print_summary(bad_fragments, good_fragments, list_of_bad_fragments, received_fragments):
     print(">>> Summary <<<")
     print("Number of received fragments: %d + 1 (INF message)" % received_fragments)
-
     print("Number of good fragments: %d + 1 (INF message)" % good_fragments)
     print("Number of bad fragments: %d" % bad_fragments)
     converted_bad_fragment_list = [str(element) for element in list_of_bad_fragments]
