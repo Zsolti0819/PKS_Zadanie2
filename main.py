@@ -335,7 +335,6 @@ def server(sock, path, server_input_thread):
                             else:
                                 print("[!] Something went terribly wrong.")
                                 print(received_fragment)
-                                return 0
 
                         except socket.error as e:
                             print("[✗] Packet no. %d was NOT received\n" % int(buffer + 1), str(e))
