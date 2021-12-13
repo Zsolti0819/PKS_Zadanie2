@@ -334,7 +334,66 @@ def server(sock, path, server_input_thread):
 
                             else:
                                 print("[!] Something went terribly wrong.")
-                                print(received_fragment)
+
+                                # crc is valid
+                                if received_fragment['crc'] == zlib.crc32(data_without_crc):
+
+                                    list_of_good_fragments.insert(good_fragments, received_fragment['sequence_number'])
+                                    good_fragments += 1
+
+                                    if SHOW_ATTRIBUTES:
+                                        print("RECEIVED: [✓]", packet_format(received_fragment))
+
+                                    if buffer < additional_packets:
+                                        received_file_name += received_fragment['data']
+                                    else:
+                                        received_message += received_fragment['data']
+
+                                    # creating ACK for the fragment
+                                    header = create_custom_header(received_fragment['sequence_number'],
+                                                                  received_fragment['fragment_count'],
+                                                                  received_fragment['fragment_size'], ACK)
+                                    crc = 0
+                                    packet_encoded = header + crc.to_bytes(4, 'big')
+                                    packet_decoded = decode_data(packet_encoded)
+
+                                    try:
+                                        sock.sendto(packet_encoded, (addr[0], addr[1]))
+                                        if SHOW_ATTRIBUTES:
+                                            print("SENT    : [>]", packet_format(packet_decoded))
+
+                                    except socket.error as e:
+                                        print("[✗] Failed to send ACK for Packet no. %d " % (
+                                        packet_decoded['sequence_number']) + str(e))
+                                        return 0
+
+                                # crc is NOT valid
+                                elif received_fragment['crc'] != zlib.crc32(data_without_crc):
+
+                                    list_of_bad_fragments.insert(bad_fragments, received_fragment['sequence_number'])
+                                    bad_fragments += 1
+
+                                    print(">>> PACKET %d HAS INVALID CRC <<<" % received_fragment['sequence_number'])
+                                    if SHOW_ATTRIBUTES:
+                                        print("RECEIVED: [!]", packet_format(received_fragment))
+
+                                    # sending NACK for the fragment
+                                    header = create_custom_header(received_fragment['sequence_number'],
+                                                                  received_fragment['fragment_count'],
+                                                                  received_fragment['fragment_size'], NACK)
+                                    crc = 0
+                                    packet_encoded = header + crc.to_bytes(4, 'big')
+                                    packet_decoded = decode_data(packet_encoded)
+
+                                    try:
+                                        sock.sendto(packet_encoded, (addr[0], addr[1]))
+                                        if SHOW_ATTRIBUTES:
+                                            print("SENT    : [>]", packet_format(packet_decoded))
+
+                                    except socket.error as e:
+                                        print("[✗] Failed to send NACK for Packet no. %d " % (
+                                        packet_encoded['sequence_number']) + str(e))
+                                        return 0
 
                         except socket.error as e:
                             print("[✗] Packet no. %d was NOT received\n" % int(buffer + 1), str(e))
