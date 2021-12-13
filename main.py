@@ -633,6 +633,7 @@ def client(server_ip, server_port, sock):
             # sending the INF packet
             try:
                 sock.sendto(packet_encoded_sent, (server_ip, int(server_port)))
+                sock.settimeout(TIMEOUT_IN_SECONDS)
                 if SHOW_ATTRIBUTES:
                     print("SENT    : [>]", packet_format(packet_decoded_sent))
 
