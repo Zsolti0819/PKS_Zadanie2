@@ -695,7 +695,8 @@ def client(server_ip, server_port, sock):
 
                                 # if receiving the response for the DAT fragment failed somehow
                                 except socket.error as e:
-                                    print("[✗] No response was received for the Packet %d\n" % int(buffer + 1), str(e))
+                                    print("[✗] No response was received for the Packet %d -" % int(buffer + 1), str(e))
+                                    print("Retransmitting...")
                                     sock.sendto(packet_encoded_sent, (server_ip, int(server_port)))
                                     continue
 
